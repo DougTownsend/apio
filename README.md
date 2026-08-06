@@ -1,97 +1,64 @@
-<!--
-This README page is optimized for its appearance in the github repo rather than for the PyPi listing.
--->
+> **Status:** the pico target below has been tested end-to-end on Linux only (real hardware: build, flash, and remote reboot-to-bootloader all confirmed working). It has **not** been tested on macOS or Windows yet.
 
-<!-- Page banner -->
-![apio-cli-banner](https://raw.githubusercontent.com/zapta/apio/main/media/apio-cli-banner.png)
+## About this fork
 
-<!-- Attributes badges -->
-[![license](https://img.shields.io/badge/License-GPL%203.0-blue.svg)](https://github.com/FPGAwars/apio/blob/main/LICENSE)
-[![python](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13%20%7C%203.14-blue)](https://pypi.org/project/apio)
+This is a fork of [FPGAwars/apio](https://github.com/FPGAwars/apio), maintained for use in a logic design class. The one substantive change from upstream is a new **pico** target (below); everything else about apio — commands, project files, the ICE40/ECP5/GOWIN/Xilinx architectures — is unmodified.
 
-<!-- Platforms badges -->
-![linux](https://raw.githubusercontent.com/zapta/apio/main/media/linux-logo.png)&nbsp;&nbsp;&nbsp;![macos](https://raw.githubusercontent.com/zapta/apio/main/media/macosx-logo.png)&nbsp;&nbsp;&nbsp;![windows](https://raw.githubusercontent.com/zapta/apio/main/media/windows-logo.png)&nbsp;&nbsp;&nbsp;![raspberry-pi](https://raw.githubusercontent.com/zapta/apio/main/media/raspbian-logo.png)
+The motivation: the class previously required an upduino3.1 FPGA board. To cut costs for students, this fork lets a project instead target a Raspberry Pi Pico, which runs a software interpretation of the same design instead of a synthesized bitstream. This is not a substitute for real FPGA hardware in general — it exists specifically so students in this class can do the same Verilog exercises on a $4 board instead of a $20+ one.
 
-<!-- Status badges -->
-[![cli-test](https://img.shields.io/github/actions/workflow/status/fpgawars/apio/test.yaml?label=cli-test)](https://github.com/fpgawars/apio/actions/workflows/test.yaml)
-[![cli-build](https://img.shields.io/github/actions/workflow/status/fpgawars/apio/build-pre-release.yaml?label=cli-build)](https://github.com/fpgawars/apio/actions/workflows/build-pre-release.yaml)
-[![cli-docs](https://img.shields.io/github/actions/workflow/status/fpgawars/apio/publish-docs.yaml?label=cli-docs)](https://github.com/fpgawars/apio/actions/workflows/publish-docs.yaml)
-[![cli-pypi-monitor](https://img.shields.io/github/actions/workflow/status/fpgawars/apio/monitor-apio-pypi.yaml?label=cli-pypi-monitor)](https://github.com/fpgawars/apio/actions/workflows/monitor-apio-pypi.yaml)
-[![cli-latest-monitor](https://img.shields.io/github/actions/workflow/status/fpgawars/apio/monitor-apio-latest.yaml?label=cli-latest-monitor)](https://github.com/fpgawars/apio/actions/workflows/monitor-apio-latest.yaml)
-[![ide-test](https://img.shields.io/github/actions/workflow/status/fpgawars/apio-vscode/test.yaml?label=ide-test)](https://github.com/fpgawars/apio-vscode/actions/workflows/test.yaml)
-[![ide-build](https://img.shields.io/github/actions/workflow/status/fpgawars/apio-vscode/build-pre-release.yaml?label=ide-build)](https://github.com/fpgawars/apio-vscode/actions/workflows/build-pre-release.yaml)
-[![examples-test](https://img.shields.io/github/actions/workflow/status/fpgawars/apio-examples/test.yaml?label=examples-test)](https://github.com/fpgawars/apio-examples/actions/workflows/test.yaml)
-[![examples-build](https://img.shields.io/github/actions/workflow/status/fpgawars/apio-examples/build-pre-release.yaml?label=examples-build)](https://github.com/fpgawars/apio-examples/actions/workflows/build-pre-release.yaml)
-[![definitions-test](https://img.shields.io/github/actions/workflow/status/fpgawars/apio-definitions/test.yaml?label=definitions-test)](https://github.com/fpgawars/apio-definitions/actions/workflows/test.yaml)
-[![definitions-build](https://img.shields.io/github/actions/workflow/status/fpgawars/apio-definitions/build-pre-release.yaml?label=definitions-build)](https://github.com/fpgawars/apio-definitions/actions/workflows/build-pre-release.yaml)
-[![oss-cad-suite-build](https://img.shields.io/github/actions/workflow/status/fpgawars/tools-oss-cad-suite/build-pre-release.yaml?label=oss-cad-suite-build)](https://github.com/fpgawars/tools-oss-cad-suite/actions/workflows/build-pre-release.yaml)
-[![verible-build](https://img.shields.io/github/actions/workflow/status/fpgawars/tools-verible/build-pre-release.yaml?label=verible-build)](https://github.com/fpgawars/tools-verible/actions/workflows/build-pre-release.yaml)
-[![graphviz-build](https://img.shields.io/github/actions/workflow/status/fpgawars/tools-graphviz/build-pre-release.yaml?label=graphviz-build)](https://github.com/fpgawars/tools-graphviz/actions/workflows/build-pre-release.yaml)
-[![drivers-build](https://img.shields.io/github/actions/workflow/status/fpgawars/tools-drivers/build-pre-release.yaml?label=drivers-build)](https://github.com/fpgawars/tools-drivers/actions/workflows/build-pre-release.yaml)
-[![workflows-test](https://img.shields.io/github/actions/workflow/status/fpgawars/apio-workflows/test.yaml?label=workflows-test)](https://github.com/fpgawars/apio-workflows/actions/workflows/test.yaml)
-[![apio-backup](https://img.shields.io/github/actions/workflow/status/fpgawars/apio-workflows/backup-apio-repos.yaml?label=apio-backup)](https://github.com/fpgawars/apio-workflows/actions/workflows/backup-apio-repos.yaml)
+## Raspberry Pi Pico target
 
----
+Setting `board = pico` in a project's `apio.ini` makes `apio build`/`apio upload` target a Raspberry Pi Pico (RP2040) instead of an FPGA:
 
+- `apio build` synthesizes the Verilog with a generic `yosys` pass (not FPGA tech-mapping), translates the resulting netlist into C, and compiles that C against `pico-sdk` with `cmake`/`arm-none-eabi-gcc` into a `.uf2`.
+- The generated firmware loops as fast as it can (no fixed rate — simple designs run far faster than 1kHz, complex ones slower), each iteration reading all input pins, evaluating combinational logic, checking for a clock edge, committing register updates, and writing all output pins — the same settle-then-commit model an event-driven Verilog simulator uses, just running continuously on real I/O instead of stepping through simulation time.
+- Pin mapping uses the same `.pcf` file format apio already uses for ice40 boards, just reinterpreting the pin number as an RP2040 GPIO instead of an FPGA package pin. Mapping a port to the reserved pin number `-1` (`INTERNAL_PIN`) gets it a signal with no physical GPIO attached at all — for `clk`, this means a genuine 1kHz square wave generated by a hardware timer interrupt, so a design can be tested with no external clock source and without spending one of the Pico's comparatively scarce GPIOs on it.
+- `apio upload` flashes over USB. The very first flash of a given board needs the standard manual step (hold BOOTSEL while plugging in USB), since a blank board has no code running yet to talk to. After that, the generated firmware includes a small listener that reboots the board into its bootloader on command, so every later `apio upload` is a normal one-command flash with no physical button press.
+- The toolchain (`arm-none-eabi-gcc`, `cmake`, `picotool`) installs automatically via `apio packages install`, fetched directly from each project's own official releases (ARM/xPack, Kitware, and Raspberry Pi respectively) rather than an apio-hosted mirror.
 
-> **NOTE:&nbsp;&nbsp;Apio IDE for Visual Studio Code.**
-> Apio is also available as an extension for Visual Studio Code. To install it, visit the [Apio IDE page](https://marketplace.visualstudio.com/items?itemName=fpgawars.apio) in the Visual Studio Code Marketplace. 
-> The rest of this page describes the command line version of Apio.
+See `experimental/pico-hello/` for a minimal working example project.
 
+## Installation
 
-Apio CLI is an easy to install and use command-line tool for FPGA design from A to Z. For a quick start, visit the [Getting started with Apio](https://fpgawars.github.io/apio/docs/quick-start) guide.
+This fork isn't published to PyPI. For now, install it from a local clone with [pipx](https://pipx.pypa.io/):
 
+```
+git clone https://github.com/DougTownsend/apio.git
+cd apio
+pipx install .
+```
 
-Simulation example:
+To pick up changes after pulling a newer version of this repo:
 
-![GTKWave screenshot](https://raw.githubusercontent.com/zapta/apio/main/media/sim-gtkwave.png)
+```
+pipx install --force .
+```
 
-## Description
+Unlike upstream apio, this fork does **not** automatically download its toolchain packages the first time they're needed. After installing (and again any time the package definitions change), run:
 
-Apio CLI is a powerful yet easy-to-use command line tool for FPGA development using Verilog and System Verilog. It’s simple to install, no toolchains, licenses, or makefiles required, and works across Linux, Windows, and macOS. Apio CLI is 100% open source, and free to use.
+```
+apio packages install
+```
 
-Apio CLI supports every stage of the FPGA workflow, from simulating and testing, to building and programming the FPGA, using simple commands such as `apio test`, `apio build`, and `apio upload` that do what you expect them to do.
+This fetches everything apio needs, including the pico target's toolchain (`arm-none-eabi-gcc`, `cmake`, `picotool`).
 
-Apio CLI currently supports over 80 FPGA boards, custom boards can be easily added, and it includes over 60 ready-to-use example projects. Apio CLI currently supports the ICE40, ECP5, and GOWIN FPGA architectures.
+*Future work*: once this has been tested on Windows and macOS, GitHub Actions will build wheels so installation can pull a release directly instead of requiring a local clone. Not worth doing before that testing happens.
 
-## Sample Apio CLI session
+## Usage
 
-1. `apio examples fetch alhambra-ii/getting-started` - fetch an example.
-2. `apio build` - build the project.
-3. `apio report` - report utilization and max clock speed.
-4. `apio sim` - simulate the design and show signals.
-5. `apio upload` - program the FPGA board.
+Standard apio workflow, from within a project directory containing an `apio.ini`:
 
-![apio-cli-animation](https://raw.githubusercontent.com/zapta/apio/main/media/apio-cli-animation.gif)
+```
+apio build    # synthesize/compile
+apio upload   # flash the board
+```
 
-## Apio CLI in the media
+For the pico target, try the included example first:
 
-[Shawn Hymel's](https://shawnhymel.com/) excellent series on FPGA programming is based on and older version of **Apio CLI** and the the Icestick board
+```
+cd experimental/pico-hello
+apio build
+apio upload
+```
 
-[![Introduction to FPGA YouTube Series](https://raw.githubusercontent.com/ShawnHymel/introduction-to-fpga/main/images/Intro%20to%20FPGA%20Part%201_Thumbnail.png)](https://www.youtube.com/watch?v=lLg1AgA2Xoo&list=PLEBQazB0HUyT1WmMONxRZn9NmQ_9CIKhb)
-
-As the user **gh02t** said in this post on [Hacker-news](https://news.ycombinator.com/item?id=17912510):
-
-> Apio is a command-line tool that automates installing the toolchain for your FPGA and running it. It just simplifies things, you don't have to use it if you'd rather call the individual tools for synthesis, P&R, simulation etc. It'd be reasonable to think of it as akin to a very smart Makefile combined with an automatic package manager, specialized to FPGAs (it's based on PlatformIO). It's nice when you're still kind of getting oriented, because you don't need to know how to set up and invoke the different tools... just call `apio build` or `apio sim`
-
-## Resources
-
-- [Apio CLI Documentation](https://fpgawars.github.io/apio/docs/)
-- [Getting started with Apio](https://fpgawars.github.io/apio/docs/quick-start)
-- [Apio CLI github repository](https://github.com/fpgawars/apio)
-- [Apio CLI package on PyPi](https://pypi.org/project/apio/)
-- [Apio CLI development environment](https://fpgawars.github.io/apio/docs/development-environment/) (for Apio CLI developers).
-- [Apio CLI daily build](https://github.com/fpgawars/apio/releases)
-- [Apio CLI Test Coverage Report](https://fpgawars.github.io/apio/coverage/)
-
-## Credits
-
-- Apio CLI was inspired by [PlatformIO](https://github.com/platformio/platformio) and was originally created by [Jesús Arroyo Torrens](https://github.com/Jesus89) in February 2016.
-- Thanks to all the Apio CLI [contributors](https://github.com/FPGAwars/apio/graphs/contributors) over the years.
-- Apio CLI uses open source tools including [Yosys](https://www.yosyshq.com), [Click](https://pypi.org/project/click), [Scons](https://pypi.org/project/SCons), [GTKWave](https://gtkwave.sourceforge.net), and [Python](https://www.python.org/downloads).
-- [BQ](https://www.bq.com) sponsored this project from 02/2016 to 11/2016. Thanks.
-
-## License
-
-The Apio project itself is licensed under the GNU General Public License version 3.0 (GPL-3.0).
-Pre-built packages may include third-party tools and components, which are subject to their respective license terms.
+The first `apio upload` to a given physical board needs it held in BOOTSEL mode (hold the BOOTSEL button while plugging in USB) — a factory-fresh board has no code running yet to receive the normal reboot signal. Every `apio upload` after that is hands-off.
