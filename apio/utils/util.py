@@ -425,31 +425,6 @@ def _check_apio_dir(apio_dir: Path, desc: str, env_var: str):
         )
         sys.exit(1)
 
-    # -- We have problem with spaces and non ascii character above value
-    # -- 127, so we allow only ascii characters in the range [33, 127].
-    # -- See here https://github.com/FPGAwars/apio/issues/515
-    for ch in str(apio_dir):
-        if ord(ch) < 33 or ord(ch) > 127:
-            # -- Name the char if it has no visible glyph, e.g. space or tab.
-            if ch == " ":
-                ch_name = "space"
-            elif ch.isprintable():
-                ch_name = ch
-            else:
-                ch_name = repr(ch)
-            cerror(
-                f"Unsupported character [{ch_name}] in apio {desc}: "
-                f"[{str(apio_dir)}].",
-            )
-            cout(
-                "Only the ASCII characters in the range 33 to 127 are "
-                "allowed, with no spaces. You can use the "
-                f"system env var '{env_var}' to set a different apio "
-                f"{desc}.",
-                style=INFO,
-            )
-            sys.exit(1)
-
 
 def resolve_home_dir() -> Path:
     """Get the absolute apio home dir. This is the apio folder where the

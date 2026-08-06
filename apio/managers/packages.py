@@ -372,11 +372,6 @@ def _fix_packages(
 ) -> None:
     """If the package scan result contains errors, fix them."""
 
-    for package_name in scan.bad_version_package_names:
-        cout(f"Uninstalling incompatible version of '{package_name}'")
-        _delete_package_dir(packages_ctx, package_name, verbose=False)
-        packages_ctx.profile.remove_package(package_name)
-
     for package_name in scan.broken_package_names:
         cout(f"Uninstalling broken package '{package_name}'")
         _delete_package_dir(packages_ctx, package_name, verbose=False)

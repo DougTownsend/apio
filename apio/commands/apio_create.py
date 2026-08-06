@@ -83,7 +83,7 @@ def cli(
     # -- Create the apio context.
     apio_ctx = ApioContext(
         project_policy=ProjectPolicy.NO_PROJECT,
-        remote_config_policy=RemoteConfigPolicy.CACHED_OK,
+        remote_config_policy=RemoteConfigPolicy.OFFLINE_OK,
         packages_policy=PackagesPolicy.ENSURE_PACKAGES,
     )
 

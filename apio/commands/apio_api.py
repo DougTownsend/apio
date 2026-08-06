@@ -9,7 +9,8 @@
 
 import sys
 import os
-from typing import Dict, List, Self, Optional, cast
+from typing import Dict, List, Optional, cast
+from typing_extensions import Self
 from dataclasses import dataclass
 import json
 from pathlib import Path
@@ -141,7 +142,7 @@ def _get_system_cli(
 
     apio_ctx = ApioContext(
         project_policy=ProjectPolicy.NO_PROJECT,
-        remote_config_policy=RemoteConfigPolicy.CACHED_OK,
+        remote_config_policy=RemoteConfigPolicy.OFFLINE_OK,
         packages_policy=PackagesPolicy.ENSURE_PACKAGES,
     )
 
@@ -236,7 +237,7 @@ def _get_project_cli(
 
     apio_ctx = ApioContext(
         project_policy=ProjectPolicy.PROJECT_REQUIRED,
-        remote_config_policy=RemoteConfigPolicy.CACHED_OK,
+        remote_config_policy=RemoteConfigPolicy.OFFLINE_OK,
         packages_policy=PackagesPolicy.ENSURE_PACKAGES,
         project_dir_arg=project_dir,
         env_arg=env,
@@ -326,7 +327,7 @@ def _get_boards_cli(
     # -- change in the future.
     apio_ctx = ApioContext(
         project_policy=ProjectPolicy.NO_PROJECT,
-        remote_config_policy=RemoteConfigPolicy.CACHED_OK,
+        remote_config_policy=RemoteConfigPolicy.OFFLINE_OK,
         packages_policy=PackagesPolicy.ENSURE_PACKAGES,
     )
 
@@ -409,7 +410,7 @@ def _get_fpgas_cli(
     # -- change in the future.
     apio_ctx = ApioContext(
         project_policy=ProjectPolicy.NO_PROJECT,
-        remote_config_policy=RemoteConfigPolicy.CACHED_OK,
+        remote_config_policy=RemoteConfigPolicy.OFFLINE_OK,
         packages_policy=PackagesPolicy.ENSURE_PACKAGES,
     )
 
@@ -471,7 +472,7 @@ def _get_programmers_cli(
     # -- change in the future.
     apio_ctx = ApioContext(
         project_policy=ProjectPolicy.NO_PROJECT,
-        remote_config_policy=RemoteConfigPolicy.CACHED_OK,
+        remote_config_policy=RemoteConfigPolicy.OFFLINE_OK,
         packages_policy=PackagesPolicy.ENSURE_PACKAGES,
     )
 
@@ -533,7 +534,7 @@ def _get_examples_cli(
     # -- change in the future.
     apio_ctx = ApioContext(
         project_policy=ProjectPolicy.NO_PROJECT,
-        remote_config_policy=RemoteConfigPolicy.CACHED_OK,
+        remote_config_policy=RemoteConfigPolicy.OFFLINE_OK,
         packages_policy=PackagesPolicy.ENSURE_PACKAGES,
     )
 
@@ -666,7 +667,7 @@ def _get_commands_cli(
     # -- This initializes the console, print active env vars, etc.
     ApioContext(
         project_policy=ProjectPolicy.NO_PROJECT,
-        remote_config_policy=RemoteConfigPolicy.CACHED_OK,
+        remote_config_policy=RemoteConfigPolicy.OFFLINE_OK,
         packages_policy=PackagesPolicy.ENSURE_PACKAGES,
     )
 
@@ -726,7 +727,7 @@ def _scan_devices_cli(
     # -- the packages.
     apio_ctx = ApioContext(
         project_policy=ProjectPolicy.NO_PROJECT,
-        remote_config_policy=RemoteConfigPolicy.CACHED_OK,
+        remote_config_policy=RemoteConfigPolicy.OFFLINE_OK,
         packages_policy=PackagesPolicy.ENSURE_PACKAGES,
     )
 
@@ -858,7 +859,7 @@ def _echo_cli(
     # -- Instanatiate Apio context, project and packages are not needed.
     _ = ApioContext(
         project_policy=ProjectPolicy.NO_PROJECT,
-        remote_config_policy=RemoteConfigPolicy.CACHED_OK,
+        remote_config_policy=RemoteConfigPolicy.OFFLINE_OK,
         packages_policy=PackagesPolicy.ENSURE_PACKAGES,
     )
 

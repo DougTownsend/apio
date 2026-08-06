@@ -235,50 +235,49 @@ class SConsManager:
 
         # - Populate the architecture specific values of result.fpga_info.
         fpga_arch = fpga_info["arch"]
-        match fpga_arch:
-            case "ice40":
-                params = fpga_info["ice40-params"]
-                result.arch = ApioArch.ICE40
-                result.fpga_info.ice40_params.MergeFrom(
-                    Ice40FpgaParams(
-                        type=params["type"],
-                        package=params["package"],
-                    )
+        if fpga_arch == "ice40":
+            params = fpga_info["ice40-params"]
+            result.arch = ApioArch.ICE40
+            result.fpga_info.ice40_params.MergeFrom(
+                Ice40FpgaParams(
+                    type=params["type"],
+                    package=params["package"],
                 )
-            case "ecp5":
-                params = fpga_info["ecp5-params"]
-                result.arch = ApioArch.ECP5
-                result.fpga_info.ecp5_params.MergeFrom(
-                    Ecp5FpgaParams(
-                        type=params["type"],
-                        package=params["package"],
-                        speed=params["speed"],
-                    )
+            )
+        elif fpga_arch == "ecp5":
+            params = fpga_info["ecp5-params"]
+            result.arch = ApioArch.ECP5
+            result.fpga_info.ecp5_params.MergeFrom(
+                Ecp5FpgaParams(
+                    type=params["type"],
+                    package=params["package"],
+                    speed=params["speed"],
                 )
-            case "gowin":
-                params = fpga_info["gowin-params"]
-                result.arch = ApioArch.GOWIN
-                result.fpga_info.gowin_params.MergeFrom(
-                    GowinFpgaParams(
-                        yosys_family=params["yosys-family"],
-                        nextpnr_family=params["nextpnr-family"],
-                        packer_device=params["packer-device"],
-                    )
+            )
+        elif fpga_arch == "gowin":
+            params = fpga_info["gowin-params"]
+            result.arch = ApioArch.GOWIN
+            result.fpga_info.gowin_params.MergeFrom(
+                GowinFpgaParams(
+                    yosys_family=params["yosys-family"],
+                    nextpnr_family=params["nextpnr-family"],
+                    packer_device=params["packer-device"],
                 )
-            case "xilinx":
-                params = fpga_info["xilinx-params"]
-                result.arch = ApioArch.XILINX
-                result.fpga_info.xilinx_params.MergeFrom(
-                    XilinxFpgaParams(
-                        family=params["family"],
-                        yosys_arch=params["yosys-arch"],
-                        package=params["package"],
-                        speed=params["speed"],
-                    )
+            )
+        elif fpga_arch == "xilinx":
+            params = fpga_info["xilinx-params"]
+            result.arch = ApioArch.XILINX
+            result.fpga_info.xilinx_params.MergeFrom(
+                XilinxFpgaParams(
+                    family=params["family"],
+                    yosys_arch=params["yosys-arch"],
+                    package=params["package"],
+                    speed=params["speed"],
                 )
-            case _:
-                cerror(f"Unexpected fpga_arch value {fpga_arch}")
-                sys.exit(1)
+            )
+        else:
+            cerror(f"Unexpected fpga_arch value {fpga_arch}")
+            sys.exit(1)
 
         # -- We are done populating The FpgaInfo params..
         assert result.fpga_info.IsInitialized(), result

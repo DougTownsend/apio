@@ -61,7 +61,7 @@ def cli(
     # -- Create an apio context with a project object.
     _ = ApioContext(
         project_policy=ProjectPolicy.NO_PROJECT,
-        remote_config_policy=RemoteConfigPolicy.CACHED_OK,
+        remote_config_policy=RemoteConfigPolicy.OFFLINE_OK,
         packages_policy=PackagesPolicy.IGNORE_PACKAGES,
     )
 

@@ -154,7 +154,7 @@ def cli(
     # -- packages to be available for the 'apio raw' command.
     apio_ctx = ApioContext(
         project_policy=ProjectPolicy.NO_PROJECT,
-        remote_config_policy=RemoteConfigPolicy.CACHED_OK,
+        remote_config_policy=RemoteConfigPolicy.OFFLINE_OK,
         packages_policy=PackagesPolicy.ENSURE_PACKAGES,
     )
 

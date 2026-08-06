@@ -96,6 +96,9 @@ class RemoteConfigPolicy(Enum):
     # -- Config is being used and a fresh copy is that was fetch in this
     # -- invocation of Apio is required.
     GET_FRESH = 2
+    # -- Config is used only from cache, never fetch. Allows offline operation
+    # -- with previously cached remote config. Fails if no cached config exists.
+    OFFLINE_OK = 3
 
 
 @dataclass(frozen=True)
@@ -274,7 +277,14 @@ class Profile:
             self._fetch_and_update_remote_config(error_is_fatal=True)
             return
 
-        # -- Case 2: A fresh config is optional but there is no cached
+        # -- Case 2: Offline mode - only use cached config, never fetch.
+        if self._remote_config_policy == RemoteConfigPolicy.OFFLINE_OK:
+            if not self._cached_remote_config:
+                cerror("No cached remote config available for offline mode")
+                sys.exit(1)
+            return
+
+        # -- Case 3: A fresh config is optional but there is no cached
         # -- config so practically it's required.
         assert self._remote_config_policy == RemoteConfigPolicy.CACHED_OK
         if not self._cached_remote_config:
@@ -283,7 +293,7 @@ class Profile:
             self._fetch_and_update_remote_config(error_is_fatal=True)
             return
 
-        # -- Case 3: May need to fetch a new config but can continue with
+        # -- Case 4: May need to fetch a new config but can continue with
         # -- the cached config in case of a fetch failure.
         #
         # -- Get the cached config metadata.

@@ -49,61 +49,52 @@ def test_init(apio_runner: ApioRunner):
         assert apio_ctx.env_build_path == Path("_build/default")
 
 
-def test_home_dir_with_a_bad_character(
-    apio_runner: ApioRunner, capsys: LogCaptureFixture
+def test_home_dir_with_spaces_and_unicode(
+    apio_runner: ApioRunner,
 ):
-    """Tests the initialization of the apio context with home dirs that
-    contain invalid chars."""
+    """Tests that the apio context works correctly with home dirs that
+    contain spaces and Unicode characters."""
 
-    for invalid_char in ["ó", "ñ", " ", "😼"]:
+    for valid_char in ["ó", "ñ", " ", "é"]:
         with apio_runner.in_sandbox() as sb:
 
-            # -- Make up a home dir path with the invalid char.
-            invalid_home_dir = sb.sandbox_dir / f"apio-{invalid_char}-home"
-            os.environ["APIO_HOME"] = str(invalid_home_dir)
+            # -- Make up a home dir path with the valid char.
+            valid_home_dir = sb.sandbox_dir / f"apio-{valid_char}-home"
+            os.environ["APIO_HOME"] = str(valid_home_dir)
 
-            # -- Initialize an apio context. It should exit with an error.
-            with raises(SystemExit) as e:
-                ApioContext(
-                    project_policy=ProjectPolicy.NO_PROJECT,
-                    remote_config_policy=RemoteConfigPolicy.CACHED_OK,
-                    packages_policy=PackagesPolicy.ENSURE_PACKAGES,
-                )
-            assert e.value.code == 1
-            # -- The space char is reported by its name, for visibility.
-            char_name = "space" if invalid_char == " " else invalid_char
-            assert (
-                f"Unsupported character [{char_name}]"
-                in capsys.readouterr().out
+            # -- Initialize an apio context. It should succeed.
+            apio_ctx = ApioContext(
+                project_policy=ProjectPolicy.NO_PROJECT,
+                remote_config_policy=RemoteConfigPolicy.CACHED_OK,
+                packages_policy=PackagesPolicy.IGNORE_PACKAGES,
             )
+
+            # -- Verify the home dir was set correctly
+            assert apio_ctx.apio_home_dir == valid_home_dir
 
 
 def test_home_dir_with_a_space_in_subprocess(apio_runner: ApioRunner):
-    """Tests that a home dir with a space fails with a clean error message
-    also when running apio as a fresh process, whose console has not been
-    configured yet. This is a regression test for a crash with an unhandled
-    AssertionError that the in-process tests can't catch because the test
-    fixtures pre-configure the console."""
+    """Tests that a home dir with a space works correctly when running apio
+    as a fresh process. This is a regression test for the issue where spaces
+    in usernames (e.g., "Jane Doe" on Windows) would cause apio to fail."""
 
     with apio_runner.in_sandbox() as sb:
 
         # -- Make up a home dir path with a space.
-        invalid_home_dir = sb.sandbox_dir / "apio home"
+        valid_home_dir = sb.sandbox_dir / "apio home"
 
-        # -- Run an apio command in a fresh process. It should exit with a
-        # -- clean error message, not an AssertionError crash.
+        # -- Run an apio command in a fresh process. It should succeed.
         result = subprocess.run(
             [sys.executable, apio_main.__file__, "--version"],
-            env={**os.environ, "APIO_HOME": str(invalid_home_dir)},
+            env={**os.environ, "APIO_HOME": str(valid_home_dir)},
             capture_output=True,
             text=True,
             check=False,
         )
 
-        assert result.returncode == 1
+        assert result.returncode == 0, f"Expected success but got: {result.stderr}"
         output = result.stdout + result.stderr
-        assert "Unsupported character [space]" in output, output
-        assert "AssertionError" not in output, output
+        assert "apio" in output.lower(), output
 
 
 def test_home_dir_with_relative_path(

@@ -13,6 +13,7 @@
   // "examples" package
   "examples": {
     "description": "Apio project examples",
+    "restricted-to-platforms": [],
     "env": {}
   },
   // "oss-cad-suite" package

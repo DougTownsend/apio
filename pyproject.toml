@@ -35,7 +35,7 @@ classifiers=[
         "Operating System :: POSIX :: Linux",
         "Operating System :: MacOS",
 ]
-requires-python = ">=3.11"
+requires-python = ">=3.10"
 requires = [
     'click==8.2.1',
     'colorama==0.4.6',
@@ -46,6 +46,7 @@ requires = [
     'requests==2.33.1',
     'scons==4.8.1',
     'semantic_version==2.10.0',
+    'typing_extensions>=4.0.0',
     'wheel==0.45.1',
     'blackiceprog==2.0.0',
     'tinyfpgab==1.1.0',
@@ -74,7 +75,7 @@ apio = "apio.__main__:main"
 
 [tool.black]
 line-length = 79
-target-version = ['py311']
+target-version = ['py310']
 
 # NOTE: For pylint control see .pylintrc in this directory.
 # It allows controls that pyproject.toml doesn't support.
