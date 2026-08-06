@@ -25,12 +25,13 @@ This fork isn't published to PyPI. For now, install it from a local clone with [
 ```
 git clone https://github.com/DougTownsend/apio.git
 cd apio
-pipx install .
+pipx install --force .
 ```
 
-To pick up changes after pulling a newer version of this repo:
+To update later, from inside that same clone:
 
 ```
+git pull origin main
 pipx install --force .
 ```
 
