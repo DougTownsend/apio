@@ -66,10 +66,19 @@ REMOTE_CONFIG_SCHEMA = {
                                 "package",
                             ],
                             "properties": {
-                                # -- Tag
+                                # -- Tag. Most apio-mirrored packages use
+                                # -- a date tag (e.g. "2026-07-10", see
+                                # -- the ${YYYYMMDD} url var), but packages
+                                # -- that reference an upstream project's
+                                # -- own releases directly (e.g. the pico
+                                # -- toolchain packages) use that
+                                # -- project's own tag instead (e.g.
+                                # -- "v4.4.2"), so this just validates a
+                                # -- sane git-tag-like string rather than
+                                # -- requiring the date format specifically.
                                 "tag": {
                                     "type": "string",
-                                    "pattern": r"^\d{4}\-\d{2}\-\d{2}$",
+                                    "pattern": r"^[A-Za-z0-9][A-Za-z0-9._-]*$",
                                 },
                                 # -- Package
                                 "package": {"type": "string"},

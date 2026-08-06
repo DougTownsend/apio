@@ -85,6 +85,106 @@
         "tag": "2025-12-26",
         "package": "apio-drivers-${PLATFORM}-${YYYYMMDD}.tgz"
       }
+    },
+
+    // -- Pico target toolchain packages: point directly at each
+    // -- upstream project's own official releases, not an fpgawars
+    // -- mirror. See the matching comment in packages.jsonc.
+
+    // -- Picotool (official Raspberry Pi prebuilt binaries).
+    "picotool-linux-x86-64": {
+      "repository": {
+        "organization": "raspberrypi",
+        "name": "pico-sdk-tools"
+      },
+      "release": {
+        "tag": "v2.3.0-0",
+        "package": "picotool-2.3.0-x86_64-lin.tar.gz"
+      }
+    },
+    "picotool-darwin-arm64": {
+      "repository": {
+        "organization": "raspberrypi",
+        "name": "pico-sdk-tools"
+      },
+      "release": {
+        "tag": "v2.3.0-0",
+        "package": "picotool-2.3.0-mac.zip"
+      }
+    },
+    "picotool-windows-amd64": {
+      "repository": {
+        "organization": "raspberrypi",
+        "name": "pico-sdk-tools"
+      },
+      "release": {
+        "tag": "v2.3.0-0",
+        "package": "picotool-2.3.0-x64-win.zip"
+      }
+    },
+
+    // -- CMake (official Kitware prebuilt binaries).
+    "cmake-linux-x86-64": {
+      "repository": {
+        "organization": "Kitware",
+        "name": "CMake"
+      },
+      "release": {
+        "tag": "v4.4.2",
+        "package": "cmake-4.4.2-linux-x86_64.tar.gz"
+      }
+    },
+    "cmake-darwin-arm64": {
+      "repository": {
+        "organization": "Kitware",
+        "name": "CMake"
+      },
+      "release": {
+        "tag": "v4.4.2",
+        "package": "cmake-4.4.2-macos-universal.tar.gz"
+      }
+    },
+    "cmake-windows-amd64": {
+      "repository": {
+        "organization": "Kitware",
+        "name": "CMake"
+      },
+      "release": {
+        "tag": "v4.4.2",
+        "package": "cmake-4.4.2-windows-x86_64.zip"
+      }
+    },
+
+    // -- Arm GNU Toolchain (xPack's repackaged official releases).
+    "arm-none-eabi-gcc-linux-x86-64": {
+      "repository": {
+        "organization": "xpack-dev-tools",
+        "name": "arm-none-eabi-gcc-xpack"
+      },
+      "release": {
+        "tag": "v15.2.1-1.1",
+        "package": "xpack-arm-none-eabi-gcc-15.2.1-1.1-linux-x64.tar.gz"
+      }
+    },
+    "arm-none-eabi-gcc-darwin-arm64": {
+      "repository": {
+        "organization": "xpack-dev-tools",
+        "name": "arm-none-eabi-gcc-xpack"
+      },
+      "release": {
+        "tag": "v15.2.1-1.1",
+        "package": "xpack-arm-none-eabi-gcc-15.2.1-1.1-darwin-arm64.tar.gz"
+      }
+    },
+    "arm-none-eabi-gcc-windows-amd64": {
+      "repository": {
+        "organization": "xpack-dev-tools",
+        "name": "arm-none-eabi-gcc-xpack"
+      },
+      "release": {
+        "tag": "v15.2.1-1.1",
+        "package": "xpack-arm-none-eabi-gcc-15.2.1-1.1-win32-x64.zip"
+      }
     }
   }
 }

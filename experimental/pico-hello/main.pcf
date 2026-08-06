@@ -1,0 +1,13 @@
+# Pin mapping for the pico target: pin numbers are RP2040 GPIO numbers,
+# not FPGA package pins (same .pcf format apio's ice40 boards use, see
+# apio/pico/pcf.py). Adjust to match your actual wiring.
+#
+# clk uses -1 (INTERNAL_PIN): no physical clock signal needed. The pico
+# generates it in software instead, at the cost of no longer having a
+# GPIO free to route it externally -- see apio/pico/codegen.py.
+set_io clk -1
+set_io rst 3
+set_io a 4
+set_io b 5
+set_io led_and 6
+set_io led_toggle 7

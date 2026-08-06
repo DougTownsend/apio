@@ -11,7 +11,9 @@
 # ---- License Apache v2
 
 from pathlib import Path
+from os import chmod
 from tarfile import open as tarfile_open
+from zipfile import ZipFile
 from rich.progress import track
 from apio.common.apio_console import console, cerror
 from apio.utils import util
@@ -60,34 +62,35 @@ class TARArchive(ArchiveBase):
         return self._afo.getmembers()
 
 
-# class ZIPArchive(ArchiveBase):
-#     """DOC: TODO"""
+class ZIPArchive(ArchiveBase):
+    """Zip unpacker. Needed for packages whose upstream release (e.g.
+    Kitware's CMake, the xPack arm-none-eabi-gcc toolchain) only ships a
+    Windows build as .zip, with no .tgz alternative -- unlike apio's own
+    mirrored packages, which are all repackaged as .tgz."""
 
-#     def __init__(self, archpath):
-#         # R1732: Consider using 'with' for resource-allocating operations
-#         # (consider-using-with)
-#         ArchiveBase.__init__(self, ZipFile(archpath), is_tar_file=False)
+    def __init__(self, archpath):
+        # R1732: Consider using 'with' for resource-allocating operations
+        # (consider-using-with)
+        # pylint: disable=R1732
+        ArchiveBase.__init__(self, ZipFile(archpath), is_tar_file=False)
 
-#     @staticmethod
-#     def preserve_permissions(item, dest_dir):
-#         """DOC: TODO"""
+    @staticmethod
+    def preserve_permissions(item, dest_dir):
+        """Zip doesn't restore unix executable bits on extraction the way
+        tar does, so do it explicitly from the entry's stored attrs."""
 
-#         # -- Build the filename
-#         file = str(Path(dest_dir) / item.filename)
+        # -- Build the filename
+        file = str(Path(dest_dir) / item.filename)
 
-#         attrs = item.external_attr >> 16
-#         if attrs:
-#             chmod(file, attrs)
+        attrs = item.external_attr >> 16
+        if attrs:
+            chmod(file, attrs)
 
-#     def get_items(self):
-#         """DOC: TODO"""
+    def get_items(self):
+        return self._afo.infolist()
 
-#         return self._afo.infolist()
-
-#     def after_extract(self, item, dest_dir):
-#         """DOC: TODO"""
-
-#         self.preserve_permissions(item, dest_dir)
+    def after_extract(self, item, dest_dir):
+        self.preserve_permissions(item, dest_dir)
 
 
 class FileUnpacker:
@@ -104,17 +107,24 @@ class FileUnpacker:
         self._dest_dir = dest_dir
         self._unpacker = None
 
-        # -- Get the file extension
+        # -- Get the file extension. Path.suffix only returns the last
+        # -- dot-component (".gz" for "foo.tar.gz"), so check the full
+        # -- name for the two-part ".tar.gz" case too -- apio's own
+        # -- mirrored packages are always single-suffix ".tgz", but
+        # -- packages that reference upstream projects' own releases
+        # -- directly (e.g. the pico toolchain packages) commonly use
+        # -- ".tar.gz".
+        arch_name = archpath.name
         arch_ext = archpath.suffix
 
         # -- Select the unpacker... according to the file extension
         # -- tar zip file
-        if arch_ext in (".tgz"):
+        if arch_ext == ".tgz" or arch_name.endswith(".tar.gz"):
             self._unpacker = TARArchive(archpath)
 
         # -- Zip file
-        # elif arch_ext == ".zip":
-        #     self._unpacker = ZIPArchive(archpath)
+        elif arch_ext == ".zip":
+            self._unpacker = ZIPArchive(archpath)
 
         # -- Fatal error. Unknown extension.
         if not self._unpacker:

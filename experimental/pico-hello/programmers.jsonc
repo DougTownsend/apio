@@ -1,0 +1,11 @@
+// Project-local programmer override defining the "pico" programmer.
+// Delegates to apio/pico/upload.py, which triggers the board's own
+// bootloader-reset listener over USB-serial (if firmware is already
+// running) and then flashes with picotool.
+{
+  "pico": {
+    "name": "Pico USB uploader (picotool)",
+    "command": "python3",
+    "args": "-m apio.pico.upload ${BIN_FILE}"
+  }
+}

@@ -1,0 +1,20 @@
+// Project-local board override defining the "pico" board.
+// See docs/custom-boards.md.
+{
+  "pico": {
+    "name": "Raspberry Pi Pico",
+    "description": "RP2040-based board, running apio's software Verilog interpreter instead of a synthesized bitstream.",
+    "fpga-id": "rp2040",
+    "programmer": {
+      "id": "pico"
+    },
+    "usb": {
+      // -- Placeholder: confirm against the actual USB descriptor the
+      // -- generated firmware advertises via pico-sdk's stdio-over-USB
+      // -- (pico_enable_stdio_usb), once built against real hardware.
+      "vid": "2E8A",
+      "pid": "000A",
+      "product-regex": "^Pico"
+    }
+  }
+}

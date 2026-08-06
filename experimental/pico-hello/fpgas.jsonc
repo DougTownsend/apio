@@ -1,0 +1,12 @@
+// Project-local fpga override defining the "rp2040" pseudo-fpga entry.
+// The Pico isn't really an FPGA -- this just reuses apio's existing
+// board -> fpga-id -> arch dispatch mechanism (see apio_pb2's PicoFpgaParams
+// and apio/managers/scons_manager.py's fpga_arch == "pico" branch) so the
+// "pico" architecture plugin (apio/scons/plugin_pico.py) gets selected.
+{
+  "rp2040": {
+    "part-num": "RP2040",
+    "arch": "pico",
+    "size": "n/a"
+  }
+}

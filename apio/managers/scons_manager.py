@@ -34,6 +34,7 @@ from apio.common.proto.apio_pb2 import (
     Ecp5FpgaParams,
     GowinFpgaParams,
     XilinxFpgaParams,
+    PicoFpgaParams,
     ApioArch,
     GraphParams,
     LintParams,
@@ -275,6 +276,9 @@ class SConsManager:
                     speed=params["speed"],
                 )
             )
+        elif fpga_arch == "pico":
+            result.arch = ApioArch.PICO
+            result.fpga_info.pico_params.MergeFrom(PicoFpgaParams())
         else:
             cerror(f"Unexpected fpga_arch value {fpga_arch}")
             sys.exit(1)

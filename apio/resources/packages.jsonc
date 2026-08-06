@@ -90,5 +90,123 @@
         "%p/bin"
       ]
     }
+  },
+
+  // -- Pico target toolchain packages, below. Unlike the packages above,
+  // -- these reference upstream projects' own official release binaries
+  // -- directly (see remote-config/apio-1.5.x.jsonc) rather than an
+  // -- fpgawars-hosted mirror -- so each needs one entry per platform,
+  // -- since none of those upstream release filenames happen to match
+  // -- apio's ${PLATFORM} substitution token, and the "path" below must
+  // -- match each release archive's own (versioned) top-level folder
+  // -- name. Bumping a tool's version means updating both the filename
+  // -- in remote-config and the folder name in "path" here together.
+
+  // "picotool" package (flashes .uf2 firmware to a Pico over USB).
+  // Official Raspberry Pi prebuilt binaries.
+  "picotool-linux-x86-64": {
+    "restricted-to-platforms": [
+      "linux-x86-64"
+    ],
+    "description": "Picotool (Raspberry Pi Pico flashing tool)",
+    "env": {
+      "path": [
+        "%p/picotool"
+      ]
+    }
+  },
+  "picotool-darwin-arm64": {
+    "restricted-to-platforms": [
+      "darwin-arm64"
+    ],
+    "description": "Picotool (Raspberry Pi Pico flashing tool)",
+    "env": {
+      "path": [
+        "%p/picotool"
+      ]
+    }
+  },
+  "picotool-windows-amd64": {
+    "restricted-to-platforms": [
+      "windows-amd64"
+    ],
+    "description": "Picotool (Raspberry Pi Pico flashing tool)",
+    "env": {
+      "path": [
+        "%p/picotool"
+      ]
+    }
+  },
+
+  // "cmake" package (builds the pico-target C firmware). Official
+  // Kitware prebuilt binaries.
+  "cmake-linux-x86-64": {
+    "restricted-to-platforms": [
+      "linux-x86-64"
+    ],
+    "description": "CMake (Kitware)",
+    "env": {
+      "path": [
+        "%p/cmake-4.4.2-linux-x86_64/bin"
+      ]
+    }
+  },
+  "cmake-darwin-arm64": {
+    "restricted-to-platforms": [
+      "darwin-arm64"
+    ],
+    "description": "CMake (Kitware)",
+    "env": {
+      "path": [
+        "%p/cmake-4.4.2-macos-universal/CMake.app/Contents/bin"
+      ]
+    }
+  },
+  "cmake-windows-amd64": {
+    "restricted-to-platforms": [
+      "windows-amd64"
+    ],
+    "description": "CMake (Kitware)",
+    "env": {
+      "path": [
+        "%p/cmake-4.4.2-windows-x86_64/bin"
+      ]
+    }
+  },
+
+  // "arm-none-eabi-gcc" package (RP2040 cross-compiler). xPack's
+  // repackaging of the official Arm GNU Toolchain releases.
+  "arm-none-eabi-gcc-linux-x86-64": {
+    "restricted-to-platforms": [
+      "linux-x86-64"
+    ],
+    "description": "Arm GNU Toolchain (xPack)",
+    "env": {
+      "path": [
+        "%p/xpack-arm-none-eabi-gcc-15.2.1-1.1/bin"
+      ]
+    }
+  },
+  "arm-none-eabi-gcc-darwin-arm64": {
+    "restricted-to-platforms": [
+      "darwin-arm64"
+    ],
+    "description": "Arm GNU Toolchain (xPack)",
+    "env": {
+      "path": [
+        "%p/xpack-arm-none-eabi-gcc-15.2.1-1.1/bin"
+      ]
+    }
+  },
+  "arm-none-eabi-gcc-windows-amd64": {
+    "restricted-to-platforms": [
+      "windows-amd64"
+    ],
+    "description": "Arm GNU Toolchain (xPack)",
+    "env": {
+      "path": [
+        "%p/xpack-arm-none-eabi-gcc-15.2.1-1.1/bin"
+      ]
+    }
   }
 }

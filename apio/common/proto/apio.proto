@@ -23,6 +23,7 @@ enum ApioArch {
   ECP5 = 2;
   GOWIN = 3;
   XILINX = 4;
+  PICO = 5;
 }
 
 enum TerminalMode {
@@ -64,6 +65,11 @@ message XilinxFpgaParams {
   required string speed = 4;
 }
 
+// Pico (RP2040) specific attributes. Not really an "fpga", but reuses the
+// fpga_info/arch dispatch mechanism to fit apio's existing pipeline.
+// Matches definition file fpgas.jsonc.
+message PicoFpgaParams {
+}
 
 
 // General fpga info.
@@ -79,6 +85,7 @@ message FpgaInfo {
     Ecp5FpgaParams ecp5_params = 11;
     GowinFpgaParams gowin_params = 12;
     XilinxFpgaParams xilinx_params = 13;
+    PicoFpgaParams pico_params = 14;
   }
 }
 
