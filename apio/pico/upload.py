@@ -14,10 +14,12 @@ work with whichever one is in front of it:
     This covers both a factory-fresh board and one the user put into
     BOOTSEL by hand (holding the button while plugging in USB).
 
-Both paths converge on flash_uf2(), which prefers `picotool load -f` and
-falls back to copying the .uf2 onto the bootloader's RPI-RP2 volume when
-picotool is missing or can't get at the device (e.g. its udev rules
-aren't installed on Linux).
+Both paths converge on flash_uf2(), which copies the .uf2 onto the
+bootloader's RPI-RP2 volume, and falls back to `picotool load -f` only if
+that volume never appears (as can happen over SSH on a headless machine).
+The copy comes first because it needs no privileged setup anywhere, while
+picotool needs a udev rule on Linux or a Zadig-installed WinUSB driver on
+Windows.
 
 Because the board's identity depends on its mode, the "pico" board
 definition deliberately carries no "usb" section -- apio's board-level
@@ -380,13 +382,18 @@ def _no_board_message(
             "- If the board is running apio firmware it should have "
             "rebooted itself; try unplugging and replugging it."
         )
+    lines.append(
+        f"- No {_BOOTSEL_VOLUME_NAME} volume appeared. On a headless "
+        "machine it may not be mounted automatically; mounting it by hand "
+        "and re-running is enough."
+    )
     if not picotool:
         lines.append(
-            "- 'picotool' was not found on PATH, so only the slower "
-            "mass-storage path was available. Run 'apio packages install'."
+            "- 'picotool' was not found on PATH, so the direct-USB "
+            "fallback was unavailable. Run 'apio packages install'."
         )
     elif picotool_error:
-        lines.append(f"- picotool reported: {picotool_error}")
+        lines.append(f"- picotool also failed: {picotool_error}")
     return "\n".join(lines)
 
 
@@ -399,37 +406,44 @@ def flash_uf2(uf2_path: Path, reboot_failed: bool = False) -> None:
     unmentioned, since a board that got into BOOTSEL some other way is
     not a problem worth reporting.
 
-    Each round tries `picotool load -f` first -- faster, and it needs no
-    filesystem mount -- then the mass-storage copy. The fallback matters
-    because picotool talks PICOBOOT directly, which needs a driver the
-    user is unlikely to have: a udev rule on Linux, or a WinUSB driver
-    installed via Zadig on Windows. Both were missing on real,
-    otherwise-working machines during testing, so the fallback is the
-    normal path rather than the exceptional one. Writing to the
-    RPI-RP2 volume needs no special permissions anywhere.
+    Each round copies the .uf2 onto the bootloader's RPI-RP2 volume if it
+    can, and only falls back to `picotool load -f` if it can't. That order
+    is deliberate: the copy is the path that needs no privileged setup on
+    any platform, and in testing it is the one that actually performed
+    every successful flash. picotool talks to the board's PICOBOOT
+    interface directly, which needs a driver the user is unlikely to
+    have -- a udev rule on Linux, or a WinUSB driver installed via Zadig
+    on Windows -- and it failed on every real machine tried.
 
-    Nothing is reported while alternatives are still being tried. A
-    picotool failure that the mass-storage copy then recovers from is not
-    a failure of the upload, and printing its (long, alarming) diagnostic
-    mid-flow made successful uploads look broken. Diagnostics are held
-    back and emitted only if every path has been exhausted -- see
-    _no_board_message()."""
+    picotool is kept rather than dropped because the two paths fail in
+    different circumstances, not the same ones. The copy needs the volume
+    to be mounted, which relies on desktop auto-mount or the udisksctl
+    call in find_bootsel_volume(), and that can fail over SSH on a
+    headless machine with no local session for polkit to grant against.
+    There, picotool plus the udev rule is what works.
+
+    Nothing is reported while alternatives remain untried: a failure that
+    a later path recovers from is not a failure of the upload, and
+    printing its (long, alarming) diagnostic mid-flow made successful
+    uploads look broken. Diagnostics are held back and emitted only once
+    everything is exhausted -- see _no_board_message()."""
 
     picotool = shutil.which("picotool")
     picotool_error = None
     deadline = time.monotonic() + _BOOTSEL_WAIT_SECONDS
 
     while True:
-        if picotool:
-            picotool_error = _run_picotool(picotool, uf2_path)
-            if picotool_error is None:
-                return
-
         volume = find_bootsel_volume()
         if volume:
             _say(f"Copying to {volume}")
             flash_via_mass_storage(uf2_path, volume)
             return
+
+        if picotool:
+            picotool_error = _run_picotool(picotool, uf2_path)
+            if picotool_error is None:
+                _say("Flashed with picotool.")
+                return
 
         if time.monotonic() >= deadline:
             raise UploadError(
