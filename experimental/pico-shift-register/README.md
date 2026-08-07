@@ -6,9 +6,9 @@ A test project that drives an 8-bit shift register, rotating a single output bit
 
 Connect a CD74HC4094E shift register to the Pico:
 
-- Pico GPIO 2 → Shift register Strobe (latch enable)
+- Pico GPIO 2 → Shift register CP (clock)
 - Pico GPIO 3 → Shift register SI (serial data input)
-- Pico GPIO 4 → Shift register CP (clock)
+- Pico GPIO 4 → Shift register Strobe (latch enable)
 
 Connect the 8 output bits (Q0–Q7) to LEDs or logic analyzer to observe the pattern.
 
