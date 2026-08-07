@@ -34,8 +34,31 @@ SERIAL_VARS = [SERIAL_PORT_VAR]
 BIN_FILE_VAR = "${BIN_FILE}"
 BIN_FILE_VALUE = "$SOURCE"
 
+# -- The ${PYTHON} place holder is replaced with the interpreter running
+# -- apio, for programmer commands implemented as apio python modules.
+# --
+# -- Spelling a bare "python3" (or "python") in a programmer definition does
+# -- not work, for two independent reasons:
+# --
+# --   * On Windows there is usually no "python3" at all. The python.org
+# --     installer creates python.exe and py.exe, and the "python3" left on
+# --     PATH is a zero-byte Microsoft Store stub that just advertises the
+# --     Store.
+# --
+# --   * On every platform, a name resolved through PATH is whatever
+# --     interpreter comes first -- not necessarily the one apio is
+# --     installed into. Under pipx apio lives in its own virtualenv, so
+# --     "python3 -m apio.pico.upload" would run a system interpreter that
+# --     has never heard of apio and fail with ModuleNotFoundError. This is
+# --     invisible in a development checkout, where an editable install puts
+# --     the sources on the system interpreter's path anyway.
+# --
+# -- sys.executable sidesteps both: it is by construction the interpreter
+# -- currently running apio, so apio is importable from it.
+PYTHON_VAR = "${PYTHON}"
+
 # -- All possible vars.
-ALL_VARS = USB_VARS + SERIAL_VARS + [BIN_FILE_VAR]
+ALL_VARS = USB_VARS + SERIAL_VARS + [BIN_FILE_VAR, PYTHON_VAR]
 
 
 class _DeviceScanner:
@@ -94,6 +117,16 @@ def _construct_programmer_cmd(
     # -- Resolved the mandatory ${BIN_FILE} to $SOURCE which will be replaced
     # -- by scons with the path of the bitstream file.
     cmd_template = cmd_template.replace(BIN_FILE_VAR, BIN_FILE_VALUE)
+
+    # -- Resolve ${PYTHON} to the interpreter running apio. Quoted when it
+    # -- contains spaces, since the resolved command is handed to a shell
+    # -- and Windows interpreter paths often sit under a user profile
+    # -- directory whose name contains one.
+    if PYTHON_VAR in cmd_template:
+        python_exe = sys.executable
+        if " " in python_exe:
+            python_exe = f'"{python_exe}"'
+        cmd_template = cmd_template.replace(PYTHON_VAR, python_exe)
 
     # -- Determine how to resolve this template.
     has_usb_vars = any(s in cmd_template for s in USB_VARS)
