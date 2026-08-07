@@ -15,6 +15,8 @@ import subprocess
 from pathlib import Path
 from typing import Optional
 
+from apio.utils import util
+
 _CMAKE_LISTS_TEMPLATE = """\
 cmake_minimum_required(VERSION 3.13)
 include($ENV{{PICO_SDK_PATH}}/pico_sdk_init.cmake)
@@ -45,11 +47,16 @@ def _require_tool(name: str) -> str:
 
 
 def _apio_packages_dir() -> Path:
-    """Root of the installed apio packages."""
-    env_dir = os.environ.get("APIO_PACKAGES_PATH")
-    if env_dir:
-        return Path(env_dir)
-    return Path.home() / ".apio" / "packages"
+    """Root of the installed apio packages.
+
+    Defers to apio's own resolver rather than reimplementing it, so that
+    APIO_HOME and APIO_PACKAGES are honored here exactly as they are
+    everywhere else. Guessing at the location instead would appear to
+    work on a default install -- where it resolves to the same
+    ~/.apio/packages -- and silently read the wrong directory anywhere
+    those variables are set, e.g. a CI or autograder container."""
+
+    return util.resolve_packages_dir(util.resolve_home_dir())
 
 
 def _find_package_dir(name: str, marker: str) -> Optional[Path]:
