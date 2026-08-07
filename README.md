@@ -1,4 +1,8 @@
-> **Status:** the pico target below has been tested end-to-end on Linux only (real hardware: build, flash, and remote reboot-to-bootloader all confirmed working). It has **not** been tested on macOS or Windows yet.
+> **Status**, all against real hardware:
+>
+> - **Linux** — fully tested. Build, flash, and remote reboot-to-bootloader all confirmed working.
+> - **Windows** — build and flash confirmed working. The remote reboot-to-bootloader has *not* been verified yet, so assume BOOTSEL must be held for every upload until that's confirmed. (It was tested in a VM, where the board's serial interface doesn't pass through; this is a limitation of the test setup, not a known defect.)
+> - **macOS** — not tested at all.
 
 ## About this fork
 
@@ -20,30 +24,20 @@ See `experimental/pico-hello/` for a minimal working example project.
 
 ## Installation
 
-This fork isn't published to PyPI. For now, install it from a local clone with [pipx](https://pipx.pypa.io/):
+Step-by-step instructions for each platform, using that platform's standard package manager so there's nothing to download by hand:
 
-```
-git clone https://github.com/DougTownsend/apio.git
-cd apio
-pipx install --force .
-```
+- **[Windows](install/windows.md)** — PowerShell and `winget`
+- **[Linux](install/linux.md)** — `apt` (with notes for Fedora and Arch)
+- **[macOS](install/macos.md)** — Homebrew *(not yet tested — see the note in that file)*
 
-To update later, from inside that same clone:
+All three install from a clone of this repo with [pipx](https://pipx.pypa.io/), since the fork isn't published to PyPI.
 
-```
-git pull origin main
-pipx install --force .
-```
+Two things differ from upstream apio and apply on every platform:
 
-Unlike upstream apio, this fork does **not** automatically download its toolchain packages the first time they're needed. After installing (and again any time the package definitions change), run:
+- **Packages are never downloaded automatically.** Run `apio packages install` once after installing, and again after any `git pull` that changes the package definitions. Ordinary commands like `apio build` will tell you to do this rather than quietly fetching things mid-build — which matters if you're baking apio into a CI image or an autograder container that must stay reproducible.
+- **The first flash of a given board needs BOOTSEL held** while plugging in USB. After that, `apio upload` reboots the board itself and needs no button press.
 
-```
-apio packages install
-```
-
-This fetches everything apio needs, including the pico target's toolchain (`arm-none-eabi-gcc`, `cmake`, `picotool`, `pico-sdk`, `tinyusb`).
-
-*Future work*: once this has been tested on Windows and macOS, GitHub Actions will build wheels so installation can pull a release directly instead of requiring a local clone. Not worth doing before that testing happens.
+*Future work*: GitHub Actions will build wheels so installation can pull a release directly instead of requiring a clone and a local build.
 
 ## Usage
 
