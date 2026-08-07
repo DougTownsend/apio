@@ -75,6 +75,11 @@ class Netlist:
     top_module: str
     ports: Dict[str, Port]
     cells: List[Cell]
+    # -- Initial value per net, from the `init` attribute yosys attaches to
+    # -- netnames when a register has one (a Verilog `initial` block, or an
+    # -- inline `reg x = 1'b1;`). Only nets with a known 0/1 initial value
+    # -- appear; nets whose init is 'x' are left out.
+    net_inits: Dict[int, int] = field(default_factory=dict)
 
 
 def parse_yosys_json(path: Union[str, Path], top_module: str = None) -> Netlist:
@@ -134,4 +139,25 @@ def parse_yosys_json(path: Union[str, Path], top_module: str = None) -> Netlist:
             )
         )
 
-    return Netlist(top_module=top_module, ports=ports, cells=cells)
+    # -- Collect per-net initial values. yosys writes them as an `init`
+    # -- attribute on the netname, MSB-first, one character per bit, e.g.
+    # -- a 3-bit register initialised to 0 gives "000". Characters other
+    # -- than 0/1 (typically 'x') mean "no defined initial value" and are
+    # -- skipped rather than guessed at.
+    net_inits: Dict[int, int] = {}
+    for net_json in module_json.get("netnames", {}).values():
+        init = net_json.get("attributes", {}).get("init")
+        if not init:
+            continue
+        bits = net_json.get("bits", [])
+        # -- The attribute is MSB-first while `bits` is LSB-first.
+        for bit, char in zip(bits, reversed(str(init))):
+            if isinstance(bit, int) and char in "01":
+                net_inits[bit] = int(char)
+
+    return Netlist(
+        top_module=top_module,
+        ports=ports,
+        cells=cells,
+        net_inits=net_inits,
+    )

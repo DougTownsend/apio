@@ -589,6 +589,34 @@ def generate_c(
     lines.append(_PICO_PRELUDE if target == "pico" else _HOST_PRELUDE)
     lines.append(f"static uint8_t nets[{module.max_net + 1}];")
 
+    # -- Explicit reset of every net to a known value at startup.
+    # --
+    # -- Static storage is already zeroed before main() by the C runtime,
+    # -- so for a design whose registers all start at 0 this is redundant
+    # -- in principle. It is emitted anyway, for two reasons. It is the
+    # -- only thing that applies a *non-zero* Verilog initial value (`reg
+    # -- x = 1'b1;`), which was previously discarded outright -- yosys
+    # -- records it, but nothing downstream read it. And it makes the
+    # -- reset explicit in the generated code rather than an inherited
+    # -- property of where the linker happened to place an array, so
+    # -- start-up state is the same no matter how the firmware was
+    # -- entered.
+    init_lines = [
+        f"  nets[{bit}] = {value};"
+        for bit, value in sorted(netlist.net_inits.items())
+        if bit <= module.max_net
+    ]
+    # -- Clock-edge detector state. File scope rather than a static local
+    # -- inside step_once() so reset_state() can clear it too: leaving it
+    # -- behind would make the first iteration after a reset see a stale
+    # -- edge and clock the registers once spuriously.
+    lines.append("static int prev_clk;")
+    lines.append("static void reset_state(void) {")
+    lines.append("  for (unsigned i = 0; i < sizeof(nets); i++) nets[i] = 0;")
+    lines.append("  prev_clk = 0;")
+    lines.extend(init_lines)
+    lines.append("}")
+
     if uses_internal_pin:
         if target == "pico":
             # -- Written from a hardware timer interrupt (see
@@ -654,7 +682,6 @@ def generate_c(
     clk_expr = _expr(module.clk_bit) if module.clk_bit is not None else "0"
     clk_active = "" if module.clk_polarity else "!"
     lines.append("static void step_once(void) {")
-    lines.append("  static int prev_clk = 0;")
     if uses_internal_pin and target == "host":
         lines.append("  virtual_pin_state ^= 1;")
     lines.append("  read_inputs();")
@@ -672,7 +699,8 @@ def generate_c(
         lines.append(_gen_pico_main(pins, uses_internal_pin))
     elif include_main and target == "host":
         lines.append(
-            "int main(void) { for (;;) { step_once(); } return 0; }"
+            "int main(void) { reset_state(); for (;;) { step_once(); } "
+            "return 0; }"
         )
 
     return "\n".join(lines) + "\n"
@@ -729,6 +757,10 @@ static void check_bootloader_trigger(void) {{
 
 int main(void) {{
   stdio_init_all();
+  /* Put every register at its Verilog initial value before anything
+   * runs, so a freshly flashed board always starts from the same state
+   * regardless of how it got here. */
+  reset_state();
 {init_block}
 {virtual_clock_init}\
   /* Unthrottled: runs as fast as the generated logic computes. Simple
