@@ -253,7 +253,7 @@ class ApioContext:
         # -- can it fetch the remote config on demand.
         remote_config_url = env_options.get(
             env_options.APIO_REMOTE_CONFIG_URL,
-            default=self.config["remote-config-url"],
+            default=self._get_default_remote_config_url(),
         )
         remote_config_ttl_days = self.config["remote-config-ttl-days"]
         remote_config_retry_minutes = self.config[
@@ -299,11 +299,17 @@ class ApioContext:
         else:
             assert packages_policy == PackagesPolicy.ENSURE_PACKAGES
 
-            # -- Install missing packages. At this point, the fields that are
-            # -- required by self.packages_context are already initialized.
-            packages.install_missing_packages_on_the_fly(
-                self.packages_context, verbose=False
-            )
+            # -- Verify that the required packages are installed, erroring
+            # -- out if not. At this point, the fields that are required by
+            # -- self.packages_context are already initialized.
+            # --
+            # -- This deliberately only checks, and never installs. Fetching
+            # -- packages as a side effect of an ordinary command makes a
+            # -- provisioned environment (a CI image, an autograder
+            # -- container) start downloading on every invocation as soon as
+            # -- a new upstream release appears. 'apio packages install' is
+            # -- the one command that may reach the network.
+            packages.verify_required_packages(self.packages_context)
 
             # -- Load the definitions from the definitions file with possible
             # -- override by the optional project file.
@@ -623,6 +629,20 @@ class ApioContext:
             platform=self.platform,
             packages_dir=self.apio_packages_dir,
         )
+
+    def _get_default_remote_config_url(self) -> str:
+        """Get the default remote config URL. When running from the apio repo
+        itself (detected by looking for remote-config/ directory), use a local
+        file:// URL pointing to the repo's remote-config. Otherwise use the
+        configured upstream URL."""
+        apio_module_path = Path(__file__).parent
+        repo_root = apio_module_path.parent
+        local_remote_config = repo_root / "remote-config" / "apio-1.5.x.jsonc"
+
+        if local_remote_config.exists():
+            return f"file://{local_remote_config.absolute()}"
+
+        return self.config["remote-config-url"]
 
     @staticmethod
     def _select_required_packages_for_platform(

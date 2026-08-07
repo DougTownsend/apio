@@ -1,0 +1,40 @@
+# udev rules for the apio pico target.
+#
+# Install with:
+#   sudo cp scripts/99-apio-pico.rules /etc/udev/rules.d/
+#   sudo udevadm control --reload-rules && sudo udevadm trigger
+# then unplug and replug the board.
+#
+# Without these, 'apio upload' still works but is degraded in two ways:
+#
+#   * picotool can't claim the board's PICOBOOT interface, so every upload
+#     falls back to copying the .uf2 onto the RPI-RP2 mass-storage volume
+#     after printing a "picotool was unable to connect" error. Slower, and
+#     the error looks like a failure even though the upload succeeds.
+#
+#   * /dev/ttyACM* is root:dialout 0660, so a user who isn't in the dialout
+#     group can't open the port to send the reboot-to-BOOTSEL trigger --
+#     meaning every upload needs the BOOTSEL button pressed by hand.
+#
+# Each device gets two rules. The GROUP/MODE pair covers users in plugdev
+# (or dialout for the tty), and TAG+="uaccess" makes systemd-logind grant
+# an ACL to whoever is logged in at the local seat -- so a desktop user
+# needs no group membership at all, and no logout/login cycle. The uaccess
+# half does not apply over SSH, where group membership is what counts.
+
+# -- RP2040 in BOOTSEL mode ("RP2 Boot"), used by picotool.
+SUBSYSTEM=="usb", ATTRS{idVendor}=="2e8a", ATTRS{idProduct}=="0003", MODE="0660", GROUP="plugdev"
+SUBSYSTEM=="usb", ATTRS{idVendor}=="2e8a", ATTRS{idProduct}=="0003", TAG+="uaccess"
+
+# -- RP2350 in BOOTSEL mode, for boards other than the classic Pico.
+SUBSYSTEM=="usb", ATTRS{idVendor}=="2e8a", ATTRS{idProduct}=="000f", MODE="0660", GROUP="plugdev"
+SUBSYSTEM=="usb", ATTRS{idVendor}=="2e8a", ATTRS{idProduct}=="000f", TAG+="uaccess"
+
+# -- Board running the apio firmware: raw USB, so picotool can see it too.
+SUBSYSTEM=="usb", ATTRS{idVendor}=="2e8a", ATTRS{idProduct}=="000a", MODE="0660", GROUP="plugdev"
+SUBSYSTEM=="usb", ATTRS{idVendor}=="2e8a", ATTRS{idProduct}=="000a", TAG+="uaccess"
+
+# -- Board running the apio firmware: the CDC serial port that
+# -- apio/pico/upload.py writes the 'b' reboot trigger to.
+SUBSYSTEM=="tty", ATTRS{idVendor}=="2e8a", ATTRS{idProduct}=="000a", MODE="0660", GROUP="dialout"
+SUBSYSTEM=="tty", ATTRS{idVendor}=="2e8a", ATTRS{idProduct}=="000a", TAG+="uaccess"

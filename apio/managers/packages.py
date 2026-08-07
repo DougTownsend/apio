@@ -14,7 +14,7 @@ from typing import Dict, List
 from pathlib import Path
 import shutil
 from apio.common.apio_console import cout, cerror, cstyle
-from apio.common.apio_styles import WARNING, ERROR, SUCCESS, EMPH3
+from apio.common.apio_styles import WARNING, ERROR, SUCCESS, EMPH3, INFO
 from apio.managers.downloader import FileDownloader
 from apio.managers.unpacker import FileUnpacker
 from apio.utils import util
@@ -63,17 +63,31 @@ def _construct_package_download_url(
     if util.is_debug(1):
         cout(f"Package URL vars: {url_vars}")
 
-    # -- Define the url parts.
-    url_parts = [
-        "https://github.com/",
-        package_remote_config.repo_organization,
-        "/",
-        package_remote_config.repo_name,
-        "/releases/download/",
-        package_remote_config.release_tag,
-        "/",
-        package_remote_config.release_file,
-    ]
+    # -- Define the url parts. Most packages are uploaded release assets,
+    # -- but a package can opt into the repo's auto-generated source
+    # -- archive for the tag instead -- needed for upstream projects that
+    # -- tag releases without attaching a tarball (e.g. hathach/tinyusb).
+    if package_remote_config.source_archive:
+        url_parts = [
+            "https://github.com/",
+            package_remote_config.repo_organization,
+            "/",
+            package_remote_config.repo_name,
+            "/archive/refs/tags/",
+            package_remote_config.release_tag,
+            ".tar.gz",
+        ]
+    else:
+        url_parts = [
+            "https://github.com/",
+            package_remote_config.repo_organization,
+            "/",
+            package_remote_config.repo_name,
+            "/releases/download/",
+            package_remote_config.release_tag,
+            "/",
+            package_remote_config.release_file,
+        ]
 
     if util.is_debug(1):
         cout(f"package url parts = {url_parts}")
@@ -194,6 +208,51 @@ def scan_and_fix_packages(packages_ctx: PackagesContext) -> bool:
     # -- use a scan from before the fixing but the fixing does not touch
     # -- installed ok packages.
     return scan.packages_installed_ok()
+
+
+def verify_required_packages(packages_ctx: PackagesContext) -> None:
+    """Verifies that every package this platform requires is installed.
+    Returns normally if so, otherwise reports what's missing and exits.
+
+    This is what ordinary commands (apio build, upload, sim, ...) use. It
+    is deliberately local-only and deliberately narrow:
+
+      * It never downloads. 'apio packages install' is the only command
+        that may reach the network, so that a provisioned environment
+        stays byte-for-byte stable until its owner chooses to update it.
+
+      * It never uninstalls or deletes. Repairing a broken install is
+        'apio packages install's job, not a side effect of building.
+
+      * It does not check versions, and so does not read the remote
+        config at all. A version mismatch against the current remote
+        config is not an error: an environment provisioned once -- a CI
+        image, a course VM, an autograder container -- must keep working
+        unchanged after an upstream release rather than re-fetching on
+        every invocation. Use 'apio packages list' to see version drift.
+
+    A package counts as present when it is both registered in the profile
+    and has its directory, which is the same pairing scan_packages() uses
+    to separate 'installed' from 'uninstalled' and 'broken'."""
+
+    missing = []
+    for package_name in packages_ctx.required_packages:
+        in_profile = package_name in packages_ctx.profile.installed_packages
+        has_dir = (packages_ctx.packages_dir / package_name).is_dir()
+        if not (in_profile and has_dir):
+            missing.append(package_name)
+
+    if not missing:
+        return
+
+    cerror(
+        "Missing or incomplete apio packages: " + ", ".join(sorted(missing))
+    )
+    cout(
+        "Run 'apio packages install' to install them.",
+        style=INFO,
+    )
+    sys.exit(1)
 
 
 def install_missing_packages_on_the_fly(

@@ -82,6 +82,14 @@ REMOTE_CONFIG_SCHEMA = {
                                 },
                                 # -- Package
                                 "package": {"type": "string"},
+                                # -- When true, fetch the repo's own source
+                                # -- archive for the tag
+                                # -- (/archive/refs/tags/<tag>.tar.gz)
+                                # -- instead of an uploaded release asset.
+                                # -- Needed for upstream projects that tag
+                                # -- releases but don't attach tarballs,
+                                # -- e.g. hathach/tinyusb.
+                                "source-archive": {"type": "boolean"},
                             },
                             "additionalProperties": False,
                         },
@@ -124,6 +132,9 @@ class PackageRemoteConfig:
     release_tag: str
     # -- E.g. "apio-oss-cad-suite-${PLATFORM}-${YYYYMMDD}.zip"
     release_file: str
+    # -- When True, fetch the repo's source archive for the tag rather than
+    # -- an uploaded release asset. See the schema above.
+    source_archive: bool = False
 
 
 def get_datetime_stamp(dt: Optional[datetime] = None) -> str:
@@ -289,7 +300,15 @@ class Profile:
         # -- Case 2: Offline mode - only use cached config, never fetch.
         if self._remote_config_policy == RemoteConfigPolicy.OFFLINE_OK:
             if not self._cached_remote_config:
-                cerror("No cached remote config available for offline mode")
+                # -- Nothing has ever populated the cache, so this is a
+                # -- fresh install. Point at the command that fixes it
+                # -- rather than reporting it as an offline-mode failure,
+                # -- which reads like a network problem.
+                cerror("Apio packages are not installed yet.")
+                cout(
+                    "Run 'apio packages install' to install them.",
+                    style=INFO,
+                )
                 sys.exit(1)
             return
 
@@ -454,6 +473,7 @@ class Profile:
         release_tag = package_config["release"]["tag"]
         release_version = release_tag.replace("-", ".")
         release_file = package_config["release"]["package"]
+        source_archive = package_config["release"].get("source-archive", False)
 
         return PackageRemoteConfig(
             repo_name=repo_name,
@@ -461,6 +481,7 @@ class Profile:
             release_version=release_version,
             release_tag=release_tag,
             release_file=release_file,
+            source_archive=source_archive,
         )
 
     def _load_profile_file(self):

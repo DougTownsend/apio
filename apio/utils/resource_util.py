@@ -71,7 +71,7 @@ FPGA_SCHEMA = schema = {
         "part-num": {"type": "string"},
         "arch": {
             "type": "string",
-            "enum": ["ice40", "ecp5", "gowin", "xilinx"],
+            "enum": ["ice40", "ecp5", "gowin", "xilinx", "pico"],
         },
         "size": {"type": "string"},
         "ice40-params": {
@@ -112,6 +112,11 @@ FPGA_SCHEMA = schema = {
                 "speed": {"type": "string"},
             },
             "required": ["family", "yosys-arch", "package", "speed"],
+            "additionalProperties": False,
+        },
+        "pico-params": {
+            "type": "object",
+            "properties": {},
             "additionalProperties": False,
         },
     },

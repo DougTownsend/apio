@@ -185,6 +185,85 @@
         "tag": "v15.2.1-1.1",
         "package": "xpack-arm-none-eabi-gcc-15.2.1-1.1-win32-x64.zip"
       }
+    },
+
+    // -- Pico SDK (Raspberry Pi Pico development kit). Source-only, works on all platforms.
+    "pico-sdk-linux-x86-64": {
+      "repository": {
+        "organization": "raspberrypi",
+        "name": "pico-sdk"
+      },
+      "release": {
+        "tag": "2.3.0",
+        "package": "pico-sdk-2.3.0.tar.gz"
+      }
+    },
+    "pico-sdk-darwin-arm64": {
+      "repository": {
+        "organization": "raspberrypi",
+        "name": "pico-sdk"
+      },
+      "release": {
+        "tag": "2.3.0",
+        "package": "pico-sdk-2.3.0.tar.gz"
+      }
+    },
+    "pico-sdk-windows-amd64": {
+      "repository": {
+        "organization": "raspberrypi",
+        "name": "pico-sdk"
+      },
+      "release": {
+        "tag": "2.3.0",
+        "package": "pico-sdk-2.3.0.tar.gz"
+      }
+    },
+
+    // -- TinyUSB. The pico-sdk release tarball above is source-only and
+    // -- carries none of the SDK's git submodules, so lib/tinyusb arrives
+    // -- empty. Without it the SDK prints "TinyUSB submodule has not been
+    // -- initialized; USB support will be unavailable" -- a *warning*, not
+    // -- an error -- and silently turns pico_enable_stdio_usb() into a
+    // -- no-op, producing firmware that runs fine but never enumerates on
+    // -- USB, so 'apio upload' can never reboot it into BOOTSEL.
+    // --
+    // -- 0.18.0 is commit 86ad6e56, which is what pico-sdk 2.3.0 pins its
+    // -- submodule to; keep these two in step when bumping the SDK.
+    // -- hathach/tinyusb tags releases but attaches no tarball, hence
+    // -- "source-archive". TinyUSB's own submodules aren't needed: the
+    // -- rp2040 family build only uses hw/bsp/rp2040 and src/.
+    "tinyusb-linux-x86-64": {
+      "repository": {
+        "organization": "hathach",
+        "name": "tinyusb"
+      },
+      "release": {
+        "tag": "0.18.0",
+        "package": "tinyusb-0.18.0.tar.gz",
+        "source-archive": true
+      }
+    },
+    "tinyusb-darwin-arm64": {
+      "repository": {
+        "organization": "hathach",
+        "name": "tinyusb"
+      },
+      "release": {
+        "tag": "0.18.0",
+        "package": "tinyusb-0.18.0.tar.gz",
+        "source-archive": true
+      }
+    },
+    "tinyusb-windows-amd64": {
+      "repository": {
+        "organization": "hathach",
+        "name": "tinyusb"
+      },
+      "release": {
+        "tag": "0.18.0",
+        "package": "tinyusb-0.18.0.tar.gz",
+        "source-archive": true
+      }
     }
   }
 }

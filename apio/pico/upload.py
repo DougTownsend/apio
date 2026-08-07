@@ -1,25 +1,36 @@
-"""Flashes a pico .uf2 firmware over USB.
+"""Flashes a pico .uf2 firmware over USB, from either board state.
 
-Two steps, matching the plan's "manual BOOTSEL once, hands-off after that"
-design: if the board is already running apio pico firmware (a normal serial
-device enumerates), send it a 'b' byte over its USB-serial port -- the
-firmware's check_bootloader_trigger() (apio/pico/codegen.py) responds by
-calling the pico-sdk's reset_usb_boot(), rebooting into the USB
-mass-storage bootloader. Then flash the new .uf2 over USB once the board
-re-enumerates in BOOTSEL mode, preferring `picotool load -f` but falling
-back to a plain mass-storage file copy if picotool can't (see flash_uf2()).
+A Pico presents two different USB identities, and `apio upload` has to
+work with whichever one is in front of it:
 
-A factory-fresh (or bricked) board with no firmware running won't respond
-to the serial trigger -- in that case the student holds BOOTSEL while
-plugging in USB, and this script's flashing step still works, it's only
-the serial-trigger step that's skipped (silently, since no matching serial
-device will be found).
+  - Running the apio firmware: a CDC serial device at 2E8A:000A. Here we
+    send it a 'b' byte over that port -- the firmware's
+    check_bootloader_trigger() (apio/pico/codegen.py) responds by calling
+    the pico-sdk's reset_usb_boot(), rebooting into the bootloader -- and
+    then wait for the port to disappear, confirming the reset took.
+
+  - Already in BOOTSEL: a mass-storage/PICOBOOT device at 2E8A:0003, with
+    no serial port at all. Nothing to trigger; we go straight to flashing.
+    This covers both a factory-fresh board and one the user put into
+    BOOTSEL by hand (holding the button while plugging in USB).
+
+Both paths converge on flash_uf2(), which prefers `picotool load -f` and
+falls back to copying the .uf2 onto the bootloader's RPI-RP2 volume when
+picotool is missing or can't get at the device (e.g. its udev rules
+aren't installed on Linux).
+
+Because the board's identity depends on its mode, the "pico" board
+definition deliberately carries no "usb" section -- apio's board-level
+presence check is a single filter and couldn't express "either of these"
+anyway. Device detection lives here instead. See boards.jsonc in the
+example projects.
 
 Invoked as `python -m apio.pico.upload <uf2_path>`, matching apio's
 programmer-cmd / ${BIN_FILE} convention (apio/managers/programmers.py) so
 it plugs into `apio upload` as an ordinary programmer command.
 """
 
+import argparse
 import os
 import shutil
 import subprocess
@@ -35,10 +46,35 @@ from apio.utils.serial_util import scan_serial_devices, SerialDeviceFilter
 # -- Matches apio/pico/codegen.py's check_bootloader_trigger().
 _REBOOT_TRIGGER_BYTE = b"b"
 
+# -- USB ids of a Pico running the apio firmware, i.e. pico-sdk's
+# -- stdio-over-USB CDC device (pico_enable_stdio_usb in
+# -- apio/pico/runtime.py's CMakeLists template).
+_FIRMWARE_VID = "2E8A"
+_FIRMWARE_PID = "000A"
+
+# -- How long to hold the serial port open after writing the trigger byte.
+# -- Closing the port drops DTR, and pico-sdk's stdio_usb only hands
+# -- buffered input to the firmware while the CDC port is connected -- so
+# -- closing immediately after the write races the firmware's ~1ms
+# -- tud_task poll and the byte is silently dropped. Observed in practice:
+# -- one upload rebooted the board, the very next one didn't touch it.
+_TRIGGER_DWELL_SECONDS = 0.3
+
 # -- How long to wait, after sending the reboot trigger, for the board to
-# -- re-enumerate as a BOOTSEL mass-storage/picoboot device.
-_BOOTSEL_WAIT_SECONDS = 5.0
-_BOOTSEL_POLL_INTERVAL_SECONDS = 0.25
+# -- drop off the bus (its serial port disappears).
+_REBOOT_WAIT_SECONDS = 3.0
+
+# -- How many times to send the trigger before giving up. The write itself
+# -- can't be acknowledged (the board reboots instead of replying), so the
+# -- port disappearing is the only confirmation available.
+_TRIGGER_ATTEMPTS = 3
+
+# -- How long to keep trying to flash a board in BOOTSEL mode. Covers the
+# -- USB re-enumeration after a triggered reboot, plus the time a desktop
+# -- takes to auto-mount the bootloader volume on the mass-storage path.
+_BOOTSEL_WAIT_SECONDS = 10.0
+
+_POLL_INTERVAL_SECONDS = 0.5
 
 # -- Volume name the RP2040 bootloader presents itself as (confirmed via
 # -- INFO_UF2.TXT's "Board-ID: RPI-RP2" on real hardware).
@@ -49,8 +85,26 @@ class UploadError(Exception):
     """Raised when the pico upload flow fails."""
 
 
+def _say(message: str) -> None:
+    """Prints a progress message, flushing as it goes.
+
+    `apio upload` runs this module as a scons subprocess with its stdout
+    piped, which makes stdout block-buffered while stderr stays unbuffered
+    -- so without the flush, progress lines show up *after* any error
+    message rather than before it."""
+    print(message, flush=True)
+
+
+def _normalize_usb_id(usb_id: str) -> str:
+    """apio's device filters require 4-char uppercase hex (see
+    check_usb_id_format() in apio/utils/usb_util.py), but board and
+    programmer definitions conventionally spell USB ids in lowercase.
+    Accept either rather than raising ValueError on '2e8a'."""
+    return usb_id.strip().upper()
+
+
 def find_running_firmware_port(
-    vendor_id: str, product_id: str
+    vendor_id: str = _FIRMWARE_VID, product_id: str = _FIRMWARE_PID
 ) -> Optional[str]:
     """Returns the serial port of an already-running apio pico firmware
     board, if one is connected, else None (e.g. a factory-fresh board,
@@ -63,8 +117,8 @@ def find_running_firmware_port(
     devices = scan_serial_devices(None)
     matches = (
         SerialDeviceFilter()
-        .set_vendor_id(vendor_id)
-        .set_product_id(product_id)
+        .set_vendor_id(_normalize_usb_id(vendor_id))
+        .set_product_id(_normalize_usb_id(product_id))
         .filter(devices)
     )
     if not matches:
@@ -73,10 +127,78 @@ def find_running_firmware_port(
 
 
 def trigger_bootloader(port: str) -> None:
-    """Sends the reboot-to-bootloader byte over an open serial port."""
-    with serial.Serial(port, baudrate=115200, timeout=1) as ser:
+    """Sends the reboot-to-bootloader byte over an open serial port.
+
+    The firmware calls reset_usb_boot() as soon as it reads the byte, so
+    the device can vanish while we're still writing to or closing the
+    port. A SerialException at that point means the reset worked, so it's
+    tolerated -- but a failure to *open* the port is a real error worth
+    reporting (e.g. no permission on the tty, or another program holding
+    it open)."""
+
+    try:
+        ser = serial.Serial(port, baudrate=115200, timeout=1)
+    except serial.SerialException as e:
+        raise UploadError(
+            f"could not open {port} to reboot the board into BOOTSEL "
+            f"mode: {e}"
+        ) from e
+
+    try:
+        ser.dtr = True
         ser.write(_REBOOT_TRIGGER_BYTE)
         ser.flush()
+        # -- Keep the port open (DTR asserted) long enough for the
+        # -- firmware to actually poll and act on the byte. See
+        # -- _TRIGGER_DWELL_SECONDS.
+        time.sleep(_TRIGGER_DWELL_SECONDS)
+    except serial.SerialException:
+        # -- Board reset mid-write. That was the point.
+        pass
+    finally:
+        try:
+            ser.close()
+        except serial.SerialException:
+            pass
+
+
+def reboot_into_bootsel(port: str) -> bool:
+    """Gets a board running apio firmware into BOOTSEL mode, retrying the
+    trigger. Returns True once its serial port is gone.
+
+    Retrying is worth it because the trigger is fire-and-forget: the board
+    reboots rather than replying, so a dropped byte is indistinguishable
+    from a slow reboot except by waiting."""
+
+    for attempt in range(_TRIGGER_ATTEMPTS):
+        # -- Already gone (either a previous attempt landed, or the board
+        # -- rebooted on its own between the scan and now).
+        if port not in {d.port for d in scan_serial_devices(None)}:
+            return True
+
+        trigger_bootloader(port)
+        if wait_for_port_to_disappear(port):
+            return True
+
+        if attempt + 1 < _TRIGGER_ATTEMPTS:
+            _say(f"Board is still on {port}; re-sending the trigger.")
+
+    return False
+
+
+def wait_for_port_to_disappear(
+    port: str, timeout: float = _REBOOT_WAIT_SECONDS
+) -> bool:
+    """Polls until `port` is no longer enumerated, i.e. the board has left
+    application mode. Returns True if it went away within the timeout."""
+
+    deadline = time.monotonic() + timeout
+    while True:
+        if port not in {d.port for d in scan_serial_devices(None)}:
+            return True
+        if time.monotonic() >= deadline:
+            return False
+        time.sleep(_POLL_INTERVAL_SECONDS)
 
 
 def find_bootsel_volume() -> Optional[Path]:
@@ -206,93 +328,152 @@ def _find_bootsel_volume_windows() -> Optional[Path]:
     return None
 
 
-def flash_via_mass_storage(uf2_path: Path) -> None:
+def flash_via_mass_storage(uf2_path: Path, volume: Path) -> None:
     """Fallback flash path: copy the .uf2 straight onto the mounted
-    RP2040 bootloader volume, polling for it to appear."""
-    deadline = time.monotonic() + _BOOTSEL_WAIT_SECONDS
-    volume = None
-    while time.monotonic() < deadline:
-        volume = find_bootsel_volume()
-        if volume:
-            break
-        time.sleep(_BOOTSEL_POLL_INTERVAL_SECONDS)
-
-    if not volume:
-        raise UploadError(
-            f"could not find a mounted {_BOOTSEL_VOLUME_NAME} volume -- "
-            "is the board in BOOTSEL mode (hold BOOTSEL while plugging "
-            "in USB)?"
-        )
-
+    RP2040 bootloader volume. The bootloader reboots into the new
+    firmware as soon as the write lands."""
     shutil.copy(uf2_path, volume / uf2_path.name)
     if hasattr(os, "sync"):
         os.sync()
 
 
-def flash_uf2(uf2_path: Path) -> None:
-    """Flashes uf2_path to a board in BOOTSEL mode. Prefers `picotool
-    load -f` (faster, more reliable device detection); if picotool isn't
-    installed, or fails (e.g. the udev rule for non-root PICOBOOT access
-    isn't set up -- confirmed to happen on a real, otherwise-working
-    Linux machine during testing), falls back to a plain mass-storage
-    file copy, which needs no extra permissions setup at all."""
-    picotool = shutil.which("picotool")
-    last_error = None
+def _run_picotool(picotool: str, uf2_path: Path) -> Optional[str]:
+    """Runs `picotool load -f`. Returns None on success, else its
+    diagnostic output."""
+    result = subprocess.run(
+        [picotool, "load", "-f", str(uf2_path)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode == 0:
+        return None
+    return (result.stderr or result.stdout or "").strip()
 
-    if picotool:
-        deadline = time.monotonic() + _BOOTSEL_WAIT_SECONDS
-        while time.monotonic() < deadline:
-            result = subprocess.run(
-                [picotool, "load", "-f", str(uf2_path)],
-                capture_output=True,
-                text=True,
-                check=False,
-            )
-            if result.returncode == 0:
-                return
-            last_error = result.stderr or result.stdout
-            time.sleep(_BOOTSEL_POLL_INTERVAL_SECONDS)
-        print(
-            f"picotool failed ({last_error.strip() if last_error else ''}"
-            "), falling back to mass-storage copy"
+
+def _no_board_message(
+    picotool: Optional[str], picotool_error: Optional[str]
+) -> str:
+    """Builds the diagnostic for 'nothing flashable showed up', covering
+    each reason a board might not be there."""
+    lines = [
+        "no Raspberry Pi Pico in BOOTSEL mode found after "
+        f"{int(_BOOTSEL_WAIT_SECONDS)}s.",
+        "- For the first flash of a new board, hold the BOOTSEL button "
+        "while plugging in USB, then run 'apio upload' again.",
+        "- If the board is running apio firmware it should have rebooted "
+        "itself; try unplugging and replugging it.",
+    ]
+    if not picotool:
+        lines.append(
+            "- 'picotool' was not found on PATH, so only the slower "
+            "mass-storage path was available. Run 'apio packages install'."
         )
+    elif picotool_error:
+        lines.append(f"- picotool reported: {picotool_error}")
+    return "\n".join(lines)
 
-    flash_via_mass_storage(uf2_path)
+
+def flash_uf2(uf2_path: Path) -> None:
+    """Flashes uf2_path to a board in BOOTSEL mode, polling until one
+    shows up (it may still be re-enumerating after a triggered reboot).
+
+    Each round tries `picotool load -f` first -- faster, and it needs no
+    filesystem mount -- then the mass-storage copy. The fallback matters
+    because picotool talks PICOBOOT directly, which on Linux needs its
+    udev rule installed for non-root access (confirmed to be missing on a
+    real, otherwise-working machine during testing), whereas writing to
+    the auto-mounted RPI-RP2 volume needs no special permissions at
+    all."""
+
+    picotool = shutil.which("picotool")
+    picotool_error = None
+    deadline = time.monotonic() + _BOOTSEL_WAIT_SECONDS
+
+    while True:
+        if picotool:
+            picotool_error = _run_picotool(picotool, uf2_path)
+            if picotool_error is None:
+                return
+
+        volume = find_bootsel_volume()
+        if volume:
+            if picotool_error:
+                _say(f"picotool failed ({picotool_error})")
+            _say(f"Copying to {volume}")
+            flash_via_mass_storage(uf2_path, volume)
+            return
+
+        if time.monotonic() >= deadline:
+            raise UploadError(_no_board_message(picotool, picotool_error))
+        time.sleep(_POLL_INTERVAL_SECONDS)
 
 
 def upload(
     uf2_path: Path,
-    vendor_id: str = "2E8A",
-    product_id: str = "000A",
+    vendor_id: str = _FIRMWARE_VID,
+    product_id: str = _FIRMWARE_PID,
 ) -> None:
-    """Full upload flow: trigger a remote reboot into the bootloader if
-    the board is already running apio pico firmware, then flash."""
+    """Full upload flow, tolerant of either board state: reboot the board
+    into its bootloader if it's running apio firmware, then flash. A
+    board already in BOOTSEL mode skips straight to the flash."""
+
+    if not uf2_path.is_file():
+        raise UploadError(f"firmware file not found: {uf2_path}")
 
     port = find_running_firmware_port(vendor_id, product_id)
     if port:
-        print(f"Rebooting pico into bootloader mode via {port}")
-        trigger_bootloader(port)
-        time.sleep(0.5)
+        _say(f"Board is running apio firmware on {port}.")
+        _say("Rebooting it into BOOTSEL mode.")
+        if not reboot_into_bootsel(port):
+            _say(
+                f"Warning: {port} is still present after "
+                f"{_TRIGGER_ATTEMPTS} attempts -- the board may not have "
+                "accepted the reboot trigger. Trying to flash anyway."
+            )
     else:
-        print(
-            "No running apio pico firmware detected -- assuming the "
-            "board is already in BOOTSEL mode (or hold BOOTSEL while "
-            "plugging in USB for a first flash)."
+        _say(
+            "No running apio firmware detected -- expecting a board "
+            "already in BOOTSEL mode."
         )
 
-    print(f"Flashing {uf2_path}")
+    _say(f"Flashing {uf2_path}")
     flash_uf2(uf2_path)
-    print("Upload complete.")
+    _say("Upload complete.")
 
 
 def main(argv=None) -> int:
-    argv = sys.argv[1:] if argv is None else argv
-    if len(argv) != 1:
-        print("usage: python -m apio.pico.upload <uf2_path>", file=sys.stderr)
-        return 2
+    parser = argparse.ArgumentParser(
+        prog="python -m apio.pico.upload",
+        description=(
+            "Flash a .uf2 firmware to a Raspberry Pi Pico, whether it is "
+            "running apio firmware or already sitting in BOOTSEL mode."
+        ),
+    )
+    parser.add_argument(
+        "--vid",
+        default=_FIRMWARE_VID,
+        help=(
+            "USB vendor id of a board running the apio firmware "
+            f"(default: {_FIRMWARE_VID})"
+        ),
+    )
+    parser.add_argument(
+        "--pid",
+        default=_FIRMWARE_PID,
+        help=(
+            "USB product id of a board running the apio firmware "
+            f"(default: {_FIRMWARE_PID})"
+        ),
+    )
+    parser.add_argument("uf2_path", help="path of the .uf2 file to flash")
+
+    args = parser.parse_args(sys.argv[1:] if argv is None else argv)
 
     try:
-        upload(Path(argv[0]))
+        upload(
+            Path(args.uf2_path), vendor_id=args.vid, product_id=args.pid
+        )
     except UploadError as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1

@@ -1,0 +1,6 @@
+# Pin mapping for CD74HC4094E 8-bit shift register
+# Connected to Pico GPIO
+set_io clk -1
+set_io strobe 2
+set_io data 3
+set_io cp 4

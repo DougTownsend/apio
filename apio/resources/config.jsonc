@@ -29,7 +29,13 @@
   // For testing using the local remote config
   // export APIO_REMOTE_CONFIG_URL="file:///projects/apio-dev/repo/remote-config/apio-{major}.{minor}.x.jsonc"
 
-  "remote-config-url": "https://github.com/fpgawars/apio/raw/main/remote-config/apio-{major}.{minor}.x.jsonc"
+  // -- This fork's own remote config, not upstream's. The pico target adds
+  // -- five packages (arm-none-eabi-gcc, cmake, picotool, pico-sdk,
+  // -- tinyusb) that upstream's config doesn't list, so an install that
+  // -- reads upstream's config can't resolve them and 'apio packages
+  // -- install' fails. Note this is read from the 'main' branch: changes to
+  // -- remote-config/ only reach users once pushed there.
+  "remote-config-url": "https://github.com/DougTownsend/apio/raw/main/remote-config/apio-{major}.{minor}.x.jsonc"
 }
 
 

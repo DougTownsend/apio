@@ -13,6 +13,7 @@ import os
 import shutil
 import subprocess
 from pathlib import Path
+from typing import Optional
 
 _CMAKE_LISTS_TEMPLATE = """\
 cmake_minimum_required(VERSION 3.13)
@@ -43,6 +44,88 @@ def _require_tool(name: str) -> str:
     return path
 
 
+def _apio_packages_dir() -> Path:
+    """Root of the installed apio packages."""
+    env_dir = os.environ.get("APIO_PACKAGES_PATH")
+    if env_dir:
+        return Path(env_dir)
+    return Path.home() / ".apio" / "packages"
+
+
+def _find_package_dir(name: str, marker: str) -> Optional[Path]:
+    """Locates an installed package's payload directory.
+
+    Packages are laid out as <packages>/<name>-<platform>/<name>-<version>,
+    so both levels are globbed rather than hardcoding a version. `marker`
+    is a path that must exist inside the result, which both validates the
+    directory and disambiguates a partially-extracted package."""
+
+    packages_dir = _apio_packages_dir()
+    if not packages_dir.is_dir():
+        return None
+
+    for package_dir in sorted(packages_dir.glob(f"{name}-*")):
+        if not package_dir.is_dir():
+            continue
+        # -- The versioned payload directory inside the package.
+        for payload_dir in sorted(package_dir.glob(f"{name}-*")):
+            if (payload_dir / marker).exists():
+                return payload_dir
+        # -- Some archives extract without a wrapping versioned directory.
+        if (package_dir / marker).exists():
+            return package_dir
+
+    return None
+
+
+def _get_pico_sdk_path() -> str:
+    """Returns the pico-sdk root, from $PICO_SDK_PATH if set, else from
+    the installed apio package."""
+
+    env_path = os.environ.get("PICO_SDK_PATH")
+    if env_path and Path(env_path).is_dir():
+        return env_path
+
+    sdk_dir = _find_package_dir("pico-sdk", "pico_sdk_init.cmake")
+    if sdk_dir:
+        return str(sdk_dir)
+
+    raise PicoBuildError(
+        "PICO_SDK_PATH is not set and pico-sdk was not found in the apio "
+        "packages -- run 'apio packages install' before building for the "
+        "pico target"
+    )
+
+
+def _get_tinyusb_path() -> str:
+    """Returns the TinyUSB root, from $PICO_TINYUSB_PATH if set, else from
+    the installed apio package.
+
+    This is required, not optional. The pico-sdk release tarball ships
+    without its git submodules, so its bundled lib/tinyusb is empty; when
+    the SDK can't find TinyUSB it emits a *warning* and quietly disables
+    USB support, turning pico_enable_stdio_usb() into a no-op. The build
+    still succeeds, but the firmware never enumerates over USB -- so it
+    can't be rebooted into BOOTSEL and every 'apio upload' would need the
+    button pressed by hand. Failing loudly here beats shipping that."""
+
+    marker = "hw/bsp/rp2040"
+
+    env_path = os.environ.get("PICO_TINYUSB_PATH")
+    if env_path and (Path(env_path) / marker).exists():
+        return env_path
+
+    tinyusb_dir = _find_package_dir("tinyusb", marker)
+    if tinyusb_dir:
+        return str(tinyusb_dir)
+
+    raise PicoBuildError(
+        "TinyUSB was not found in the apio packages -- run 'apio packages "
+        "install'. Without it the pico-sdk silently builds firmware with "
+        "no USB support, which cannot be flashed without pressing BOOTSEL."
+    )
+
+
 def build_uf2(generated_c: Path, uf2_target: Path) -> int:
     """Builds `generated_c` into a .uf2 at `uf2_target`. Returns 0 on
     success, non-zero (and prints diagnostics) on failure, matching the
@@ -51,11 +134,8 @@ def build_uf2(generated_c: Path, uf2_target: Path) -> int:
     try:
         _require_tool("cmake")
         _require_tool("arm-none-eabi-gcc")
-        if not os.environ.get("PICO_SDK_PATH"):
-            raise PicoBuildError(
-                "PICO_SDK_PATH is not set -- point it at an installed "
-                "pico-sdk checkout"
-            )
+        os.environ["PICO_SDK_PATH"] = _get_pico_sdk_path()
+        os.environ["PICO_TINYUSB_PATH"] = _get_tinyusb_path()
 
         build_dir = generated_c.parent / "_pico_cmake_build"
         build_dir.mkdir(exist_ok=True)

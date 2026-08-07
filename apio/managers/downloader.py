@@ -16,6 +16,7 @@ packages release repositories.
 
 from math import ceil
 from pathlib import Path
+from typing import Optional
 import requests
 from rich.progress import track
 from apio.utils import util
@@ -73,10 +74,16 @@ class FileDownloader:
             )
             raise util.ApioException()
 
-    def get_size(self) -> int:
-        """Return the size (in bytes) of the latest bytes block received"""
+    def get_size(self) -> Optional[int]:
+        """Return the size (in bytes) of the file being downloaded, or None
+        if the server didn't declare one.
 
-        return int(self._request.headers["content-length"])
+        Release assets always carry a content-length, but Github generates
+        source archives (/archive/refs/tags/...) on the fly and streams
+        them chunked, with no length declared up front."""
+
+        size = self._request.headers.get("content-length")
+        return int(size) if size is not None else None
 
     def start(self):
         """Start the downloading of the file"""
@@ -87,21 +94,31 @@ class FileDownloader:
         # -- Open destination file, for writing bytes
         with open(self.destination, "wb") as file:
 
-            # -- Get the file length in Kbytes
-            num_chunks = int(ceil(self.get_size() / float(self.CHUNK_SIZE)))
+            # -- Get the file length in Kbytes, if the server declared one.
+            size = self.get_size()
 
-            # -- Download and write the chunks, while displaying the progress.
-            for _ in track(
-                range(num_chunks),
-                description="Downloading",
-                console=console(),
-            ):
+            if size is None:
+                # -- Unknown length: consume the stream to its end, with an
+                # -- indeterminate progress indicator.
+                with console().status("Downloading"):
+                    for chunk in itercontent:
+                        file.write(chunk)
+            else:
+                num_chunks = int(ceil(size / float(self.CHUNK_SIZE)))
 
-                file.write(next(itercontent))
+                # -- Download and write the chunks, while displaying the
+                # -- progress.
+                for _ in track(
+                    range(num_chunks),
+                    description="Downloading",
+                    console=console(),
+                ):
 
-            # -- Check that the iterator reached its end. When the end is
-            # -- reached, next() returns the default value None.
-            assert next(itercontent, None) is None
+                    file.write(next(itercontent))
+
+                # -- Check that the iterator reached its end. When the end is
+                # -- reached, next() returns the default value None.
+                assert next(itercontent, None) is None
 
         # -- Download done!
         self._request.close()

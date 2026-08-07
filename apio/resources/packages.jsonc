@@ -208,5 +208,56 @@
         "%p/xpack-arm-none-eabi-gcc-15.2.1-1.1/bin"
       ]
     }
+  },
+
+  // "pico-sdk" package (Raspberry Pi Pico SDK). Official source from
+  // raspberrypi/pico-sdk Github repository. Version-agnostic: the pico runtime
+  // auto-detects the installed version by looking for pico-sdk-* directories.
+  "pico-sdk-linux-x86-64": {
+    "restricted-to-platforms": [
+      "linux-x86-64"
+    ],
+    "description": "Raspberry Pi Pico SDK",
+    "env": {}
+  },
+  "pico-sdk-darwin-arm64": {
+    "restricted-to-platforms": [
+      "darwin-arm64"
+    ],
+    "description": "Raspberry Pi Pico SDK",
+    "env": {}
+  },
+  "pico-sdk-windows-amd64": {
+    "restricted-to-platforms": [
+      "windows-amd64"
+    ],
+    "description": "Raspberry Pi Pico SDK",
+    "env": {}
+  },
+
+  // "tinyusb" package. Supplies the USB device stack that the pico-sdk
+  // release tarball omits (it ships no git submodules) -- without it the
+  // generated firmware builds but has no USB at all. apio/pico/runtime.py
+  // points the SDK at this via PICO_TINYUSB_PATH.
+  "tinyusb-linux-x86-64": {
+    "restricted-to-platforms": [
+      "linux-x86-64"
+    ],
+    "description": "TinyUSB (USB stack for the pico target)",
+    "env": {}
+  },
+  "tinyusb-darwin-arm64": {
+    "restricted-to-platforms": [
+      "darwin-arm64"
+    ],
+    "description": "TinyUSB (USB stack for the pico target)",
+    "env": {}
+  },
+  "tinyusb-windows-amd64": {
+    "restricted-to-platforms": [
+      "windows-amd64"
+    ],
+    "description": "TinyUSB (USB stack for the pico target)",
+    "env": {}
   }
 }
