@@ -352,18 +352,34 @@ def _run_picotool(picotool: str, uf2_path: Path) -> Optional[str]:
 
 
 def _no_board_message(
-    picotool: Optional[str], picotool_error: Optional[str]
+    picotool: Optional[str],
+    picotool_error: Optional[str],
+    reboot_failed: bool = False,
 ) -> str:
     """Builds the diagnostic for 'nothing flashable showed up', covering
-    each reason a board might not be there."""
+    each reason a board might not be there.
+
+    This is the single place upload diagnostics surface. Everything the
+    run learned along the way is collected here rather than printed as it
+    happens, so a recovered failure stays silent and a real one explains
+    itself completely."""
     lines = [
         "no Raspberry Pi Pico in BOOTSEL mode found after "
         f"{int(_BOOTSEL_WAIT_SECONDS)}s.",
         "- For the first flash of a new board, hold the BOOTSEL button "
         "while plugging in USB, then run 'apio upload' again.",
-        "- If the board is running apio firmware it should have rebooted "
-        "itself; try unplugging and replugging it.",
     ]
+    if reboot_failed:
+        lines.append(
+            "- The board was running apio firmware but did not respond to "
+            "the reboot trigger, so it never entered BOOTSEL mode. Unplug "
+            "and replug it, holding BOOTSEL."
+        )
+    else:
+        lines.append(
+            "- If the board is running apio firmware it should have "
+            "rebooted itself; try unplugging and replugging it."
+        )
     if not picotool:
         lines.append(
             "- 'picotool' was not found on PATH, so only the slower "
@@ -374,17 +390,30 @@ def _no_board_message(
     return "\n".join(lines)
 
 
-def flash_uf2(uf2_path: Path) -> None:
+def flash_uf2(uf2_path: Path, reboot_failed: bool = False) -> None:
     """Flashes uf2_path to a board in BOOTSEL mode, polling until one
     shows up (it may still be re-enumerating after a triggered reboot).
 
+    `reboot_failed` says the board ignored the reboot trigger. It only
+    affects the wording if the flash then fails too; on success it stays
+    unmentioned, since a board that got into BOOTSEL some other way is
+    not a problem worth reporting.
+
     Each round tries `picotool load -f` first -- faster, and it needs no
     filesystem mount -- then the mass-storage copy. The fallback matters
-    because picotool talks PICOBOOT directly, which on Linux needs its
-    udev rule installed for non-root access (confirmed to be missing on a
-    real, otherwise-working machine during testing), whereas writing to
-    the auto-mounted RPI-RP2 volume needs no special permissions at
-    all."""
+    because picotool talks PICOBOOT directly, which needs a driver the
+    user is unlikely to have: a udev rule on Linux, or a WinUSB driver
+    installed via Zadig on Windows. Both were missing on real,
+    otherwise-working machines during testing, so the fallback is the
+    normal path rather than the exceptional one. Writing to the
+    RPI-RP2 volume needs no special permissions anywhere.
+
+    Nothing is reported while alternatives are still being tried. A
+    picotool failure that the mass-storage copy then recovers from is not
+    a failure of the upload, and printing its (long, alarming) diagnostic
+    mid-flow made successful uploads look broken. Diagnostics are held
+    back and emitted only if every path has been exhausted -- see
+    _no_board_message()."""
 
     picotool = shutil.which("picotool")
     picotool_error = None
@@ -398,14 +427,14 @@ def flash_uf2(uf2_path: Path) -> None:
 
         volume = find_bootsel_volume()
         if volume:
-            if picotool_error:
-                _say(f"picotool failed ({picotool_error})")
             _say(f"Copying to {volume}")
             flash_via_mass_storage(uf2_path, volume)
             return
 
         if time.monotonic() >= deadline:
-            raise UploadError(_no_board_message(picotool, picotool_error))
+            raise UploadError(
+                _no_board_message(picotool, picotool_error, reboot_failed)
+            )
         time.sleep(_POLL_INTERVAL_SECONDS)
 
 
@@ -421,16 +450,16 @@ def upload(
     if not uf2_path.is_file():
         raise UploadError(f"firmware file not found: {uf2_path}")
 
+    reboot_failed = False
     port = find_running_firmware_port(vendor_id, product_id)
     if port:
         _say(f"Board is running apio firmware on {port}.")
         _say("Rebooting it into BOOTSEL mode.")
-        if not reboot_into_bootsel(port):
-            _say(
-                f"Warning: {port} is still present after "
-                f"{_TRIGGER_ATTEMPTS} attempts -- the board may not have "
-                "accepted the reboot trigger. Trying to flash anyway."
-            )
+        # -- Not reported here even when it fails. The flash below may
+        # -- still succeed (the board can be in BOOTSEL for other
+        # -- reasons), and saying so mid-flow would make a working upload
+        # -- look broken. It is carried into the failure message instead.
+        reboot_failed = not reboot_into_bootsel(port)
     else:
         _say(
             "No running apio firmware detected -- expecting a board "
@@ -438,7 +467,7 @@ def upload(
         )
 
     _say(f"Flashing {uf2_path}")
-    flash_uf2(uf2_path)
+    flash_uf2(uf2_path, reboot_failed=reboot_failed)
     _say("Upload complete.")
 
 
