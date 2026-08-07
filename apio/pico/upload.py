@@ -39,7 +39,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
 import serial
 
@@ -77,6 +77,16 @@ _TRIGGER_ATTEMPTS = 3
 _BOOTSEL_WAIT_SECONDS = 10.0
 
 _POLL_INTERVAL_SECONDS = 0.5
+
+# -- Ceiling on the helper commands used to locate and mount the BOOTSEL
+# -- volume. They are probes inside a polling loop, so one that blocks
+# -- would hang the upload instead of letting the loop time out --
+# -- observed with 'udisksctl mount' against a device that had gone away.
+_SUBPROCESS_TIMEOUT_SECONDS = 10.0
+
+# -- Longer, because unlike the probes above this one may be performing
+# -- the actual flash rather than just answering a question.
+_PICOTOOL_TIMEOUT_SECONDS = 30.0
 
 # -- Volume name the RP2040 bootloader presents itself as (confirmed via
 # -- INFO_UF2.TXT's "Board-ID: RPI-RP2" on real hardware).
@@ -252,6 +262,29 @@ def _find_mounted_bootsel_volume_linux() -> Optional[Path]:
     return None
 
 
+def _run_bounded(
+    cmd: List[str], timeout: float = _SUBPROCESS_TIMEOUT_SECONDS
+):
+    """Runs a helper command, never blocking for longer than `timeout`.
+
+    Every external command here is a probe run inside a polling loop, so
+    one that blocks would hang the whole upload rather than letting the
+    loop reach its deadline -- `udisksctl mount` in particular can sit
+    waiting on a device that has gone away. A timeout is treated as a
+    failed probe: returns None so the caller moves on."""
+
+    try:
+        return subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=timeout,
+        )
+    except (subprocess.TimeoutExpired, OSError):
+        return None
+
+
 def _mount_bootsel_volume_linux() -> Optional[Path]:
     udisksctl = shutil.which("udisksctl")
     lsblk = shutil.which("lsblk")
@@ -259,13 +292,8 @@ def _mount_bootsel_volume_linux() -> Optional[Path]:
         return None
 
     # -- Find the (currently unmounted) partition with label RPI-RP2.
-    result = subprocess.run(
-        [lsblk, "-o", "NAME,LABEL,PATH", "-J"],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    if result.returncode != 0:
+    result = _run_bounded([lsblk, "-o", "NAME,LABEL,PATH", "-J"])
+    if result is None or result.returncode != 0:
         return None
 
     import json  # pylint: disable=import-outside-toplevel
@@ -283,13 +311,8 @@ def _mount_bootsel_volume_linux() -> Optional[Path]:
     if not device_path:
         return None
 
-    mount_result = subprocess.run(
-        [udisksctl, "mount", "-b", device_path],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    if mount_result.returncode != 0:
+    mount_result = _run_bounded([udisksctl, "mount", "-b", device_path])
+    if mount_result is None or mount_result.returncode != 0:
         return None
 
     # -- udisksctl prints e.g. "Mounted /dev/sda1 at /media/doug/RPI-RP2."
@@ -342,12 +365,15 @@ def flash_via_mass_storage(uf2_path: Path, volume: Path) -> None:
 def _run_picotool(picotool: str, uf2_path: Path) -> Optional[str]:
     """Runs `picotool load -f`. Returns None on success, else its
     diagnostic output."""
-    result = subprocess.run(
+    result = _run_bounded(
         [picotool, "load", "-f", str(uf2_path)],
-        capture_output=True,
-        text=True,
-        check=False,
+        timeout=_PICOTOOL_TIMEOUT_SECONDS,
     )
+    if result is None:
+        return (
+            f"picotool did not finish within "
+            f"{int(_PICOTOOL_TIMEOUT_SECONDS)}s"
+        )
     if result.returncode == 0:
         return None
     return (result.stderr or result.stdout or "").strip()
@@ -445,6 +471,11 @@ def flash_uf2(uf2_path: Path, reboot_failed: bool = False) -> None:
                 _say("Flashed with picotool.")
                 return
 
+        # -- The deadline bounds how long we keep *retrying*, not the
+        # -- wall-clock runtime: a round already in progress runs to
+        # -- completion first. That is bounded too, since every command
+        # -- it can call has its own timeout, so the whole loop always
+        # -- terminates -- which is the part that previously did not hold.
         if time.monotonic() >= deadline:
             raise UploadError(
                 _no_board_message(picotool, picotool_error, reboot_failed)
