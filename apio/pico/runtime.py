@@ -133,6 +133,35 @@ def _get_tinyusb_path() -> str:
     )
 
 
+def _get_ninja_exe() -> str:
+    """Returns the path of the ninja executable from the apio packages.
+
+    The pico firmware build pins its cmake generator to Ninja rather than
+    letting cmake choose. Left to itself cmake picks from what happens to
+    be on the host: 'NMake Makefiles' on Windows, which requires Visual
+    Studio and fails outright on a machine that only has Python and apio,
+    and 'Unix Makefiles' elsewhere, which needs make to be installed. The
+    packaged ninja is present on every platform by construction, so the
+    firmware builds identically everywhere."""
+
+    exe_name = "ninja.exe" if os.name == "nt" else "ninja"
+
+    ninja_dir = _find_package_dir("ninja", exe_name)
+    if ninja_dir:
+        return str(ninja_dir / exe_name)
+
+    # -- Fall back to a copy on PATH before giving up, so a developer with
+    # -- their own ninja isn't blocked by a missing package.
+    on_path = shutil.which("ninja")
+    if on_path:
+        return on_path
+
+    raise PicoBuildError(
+        "ninja was not found in the apio packages -- run 'apio packages "
+        "install'. It is required to build the pico firmware."
+    )
+
+
 def build_uf2(generated_c: Path, uf2_target: Path) -> int:
     """Builds `generated_c` into a .uf2 at `uf2_target`. Returns 0 on
     success, non-zero (and prints diagnostics) on failure, matching the
@@ -154,8 +183,31 @@ def build_uf2(generated_c: Path, uf2_target: Path) -> int:
         )
         shutil.copy(generated_c, build_dir / generated_c.name)
 
+        # -- Pin the generator and point cmake straight at the packaged
+        # -- ninja, rather than relying on it being found on PATH.
+        ninja_exe = _get_ninja_exe()
+
+        # -- A cache left by a different generator makes configure fail
+        # -- outright ("does not match the generator used previously"),
+        # -- which would strand any build tree created before the
+        # -- generator was pinned. Discard it and reconfigure.
+        cache_file = build_dir / "CMakeCache.txt"
+        if cache_file.exists():
+            cached = cache_file.read_text(encoding="utf-8", errors="ignore")
+            if "CMAKE_GENERATOR:INTERNAL=Ninja" not in cached:
+                cache_file.unlink()
+                shutil.rmtree(build_dir / "CMakeFiles", ignore_errors=True)
         subprocess.run(
-            ["cmake", "-S", str(build_dir), "-B", str(build_dir)],
+            [
+                "cmake",
+                "-G",
+                "Ninja",
+                f"-DCMAKE_MAKE_PROGRAM={ninja_exe}",
+                "-S",
+                str(build_dir),
+                "-B",
+                str(build_dir),
+            ],
             check=True,
         )
         subprocess.run(

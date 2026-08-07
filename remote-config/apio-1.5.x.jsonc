@@ -264,6 +264,41 @@
         "package": "tinyusb-0.18.0.tar.gz",
         "source-archive": true
       }
+    },
+
+    // -- Ninja, the cmake generator used to build the pico firmware. Ships
+    // -- so the build does not depend on the host having nmake (Windows,
+    // -- Visual Studio only) or make. Ordinary release assets, so no
+    // -- "source-archive" needed.
+    "ninja-linux-x86-64": {
+      "repository": {
+        "organization": "ninja-build",
+        "name": "ninja"
+      },
+      "release": {
+        "tag": "v1.13.2",
+        "package": "ninja-linux.zip"
+      }
+    },
+    "ninja-darwin-arm64": {
+      "repository": {
+        "organization": "ninja-build",
+        "name": "ninja"
+      },
+      "release": {
+        "tag": "v1.13.2",
+        "package": "ninja-mac.zip"
+      }
+    },
+    "ninja-windows-amd64": {
+      "repository": {
+        "organization": "ninja-build",
+        "name": "ninja"
+      },
+      "release": {
+        "tag": "v1.13.2",
+        "package": "ninja-win.zip"
+      }
     }
   }
 }

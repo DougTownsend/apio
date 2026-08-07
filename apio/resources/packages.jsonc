@@ -259,5 +259,45 @@
     ],
     "description": "TinyUSB (USB stack for the pico target)",
     "env": {}
+  },
+
+  // "ninja" package. The build generator for the pico firmware. Without it
+  // cmake picks a generator from whatever happens to be installed on the
+  // host -- 'NMake Makefiles' on Windows, which needs Visual Studio, and
+  // 'Unix Makefiles' elsewhere, which needs make. Shipping ninja makes the
+  // build self-contained and identical on all three platforms. The binary
+  // sits at the root of the release zip, hence "%p" rather than "%p/bin".
+  "ninja-linux-x86-64": {
+    "restricted-to-platforms": [
+      "linux-x86-64"
+    ],
+    "description": "Ninja build system",
+    "env": {
+      "path": [
+        "%p"
+      ]
+    }
+  },
+  "ninja-darwin-arm64": {
+    "restricted-to-platforms": [
+      "darwin-arm64"
+    ],
+    "description": "Ninja build system",
+    "env": {
+      "path": [
+        "%p"
+      ]
+    }
+  },
+  "ninja-windows-amd64": {
+    "restricted-to-platforms": [
+      "windows-amd64"
+    ],
+    "description": "Ninja build system",
+    "env": {
+      "path": [
+        "%p"
+      ]
+    }
   }
 }
