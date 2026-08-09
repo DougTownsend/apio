@@ -87,6 +87,15 @@ _QUICK_FLASH_WAIT_SECONDS = 0.0
 
 _POLL_INTERVAL_SECONDS = 0.5
 
+# -- How many times to try copying the .uf2 onto the BOOTSEL volume, and
+# -- how long to wait between tries. The mountpoint can pass is_dir()
+# -- slightly before the FAT volume underneath it is writable -- observed
+# -- on macOS 26, whose fskit msdos driver makes the window wide enough
+# -- that a copy issued right after our own reboot trigger fails every
+# -- time with EPERM. It clears well within a second.
+_VOLUME_COPY_ATTEMPTS = 3
+_VOLUME_COPY_RETRY_SECONDS = 1.0
+
 # -- Ceiling on the helper commands used to locate and mount the BOOTSEL
 # -- volume. They are probes inside a polling loop, so one that blocks
 # -- would hang the upload instead of letting the loop time out --
@@ -362,13 +371,38 @@ def _find_bootsel_volume_windows() -> Optional[Path]:
     return None
 
 
-def flash_via_mass_storage(uf2_path: Path, volume: Path) -> None:
+def flash_via_mass_storage(uf2_path: Path, volume: Path) -> bool:
     """Fallback flash path: copy the .uf2 straight onto the mounted
     RP2040 bootloader volume. The bootloader reboots into the new
-    firmware as soon as the write lands."""
-    shutil.copy(uf2_path, volume / uf2_path.name)
-    if hasattr(os, "sync"):
-        os.sync()
+    firmware as soon as the write lands. Returns True if the copy landed.
+
+    Retries because finding the volume and being able to write to it are
+    two different things: the mountpoint can exist a moment before the
+    filesystem under it accepts writes, and a copy issued in that window
+    fails outright rather than blocking. Waiting a second and asking
+    again clears it.
+
+    A copy that never succeeds is reported here and then treated as a
+    failed path, not an error -- the caller still has picotool and the
+    serial trigger to try, and one of those recovering means the upload
+    was fine. Errors are the caller's to raise once nothing is left."""
+
+    for attempt in range(_VOLUME_COPY_ATTEMPTS):
+        try:
+            shutil.copy(uf2_path, volume / uf2_path.name)
+            if hasattr(os, "sync"):
+                os.sync()
+            return True
+        except OSError as e:
+            if attempt + 1 < _VOLUME_COPY_ATTEMPTS:
+                time.sleep(_VOLUME_COPY_RETRY_SECONDS)
+                continue
+            _say(
+                f"Could not write to {volume} after "
+                f"{_VOLUME_COPY_ATTEMPTS} attempts: {e}"
+            )
+
+    return False
 
 
 def _run_picotool(picotool: str, uf2_path: Path) -> Optional[str]:
@@ -439,18 +473,20 @@ def _attempt_flash(
 
     Copies the .uf2 onto the bootloader's RPI-RP2 volume if it can, and
     only falls back to `picotool load -f` if it can't. That order is
-    deliberate: the copy is the path that needs no privileged setup on any
-    platform, and in testing it is the one that actually performed every
-    successful flash. picotool talks to the board's PICOBOOT interface
-    directly, which needs a driver the user is unlikely to have -- a udev
-    rule on Linux, or a WinUSB driver installed via Zadig on Windows --
-    and it failed on every real machine tried."""
+    deliberate: the copy is the one path that needs no privileged setup on
+    any platform. picotool talks to the board's PICOBOOT interface
+    directly, which on Linux needs a udev rule and on Windows a WinUSB
+    driver installed via Zadig -- neither of which a student is likely to
+    have, and without which it fails in milliseconds. On macOS it needs
+    nothing and works out of the box, where it flashes in about 2s."""
 
     volume = find_bootsel_volume()
     if volume:
         _say(f"Copying to {volume}")
-        flash_via_mass_storage(uf2_path, volume)
-        return True, None
+        if flash_via_mass_storage(uf2_path, volume):
+            return True, None
+        # -- Fall through: the volume was there but unwritable, which is
+        # -- exactly the case picotool can still handle.
 
     if picotool:
         picotool_error = _run_picotool(picotool, uf2_path)

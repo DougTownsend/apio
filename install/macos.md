@@ -1,8 +1,8 @@
 # Installing apio on macOS
 
-> **Not yet tested.** The pico target has been verified end to end on Linux and
-> Windows, but not on macOS. These instructions are the expected procedure
-> rather than a confirmed one; please report anything that does not work.
+> **Verified on hardware.** These steps have been walked through end to end on
+> Apple silicon: install, build, first flash from BOOTSEL, and hands-off
+> uploads after that.
 
 Everything here is done from **Terminal** with [Homebrew](https://brew.sh),
 the standard macOS package manager. Nothing needs downloading by hand.
@@ -116,10 +116,11 @@ only takes effect in a new shell.
 ### macOS refuses to run a downloaded tool
 
 apio's toolchain is fetched from each project's official releases rather than
-installed through Homebrew, so Gatekeeper may quarantine some of it. If a build
-fails with a message about an unidentified developer or a damaged binary,
-please report it along with the exact wording — this is one of the parts most
-likely to need adjusting for macOS.
+installed through Homebrew, so in principle Gatekeeper could quarantine some of
+it. In testing it did not — `apio packages install` followed by `apio build`
+worked with no Gatekeeper prompts. If a build does fail with a message about an
+unidentified developer or a damaged binary, please report it along with the
+exact wording.
 
 ### apio upload cannot find the board
 
