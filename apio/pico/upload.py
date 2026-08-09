@@ -3,23 +3,24 @@
 A Pico presents two different USB identities, and `apio upload` has to
 work with whichever one is in front of it:
 
+  - Already in BOOTSEL: a mass-storage/PICOBOOT device at 2E8A:0003, with
+    no serial port at all. Nothing to trigger; we go straight to flashing.
+    This covers both a factory-fresh board and one the user put into
+    BOOTSEL by hand (holding the button while plugging in USB).
+
   - Running the apio firmware: a CDC serial device at 2E8A:000A. Here we
     send it a 'b' byte over that port -- the firmware's
     check_bootloader_trigger() (apio/pico/codegen.py) responds by calling
     the pico-sdk's reset_usb_boot(), rebooting into the bootloader -- and
     then wait for the port to disappear, confirming the reset took.
 
-  - Already in BOOTSEL: a mass-storage/PICOBOOT device at 2E8A:0003, with
-    no serial port at all. Nothing to trigger; we go straight to flashing.
-    This covers both a factory-fresh board and one the user put into
-    BOOTSEL by hand (holding the button while plugging in USB).
-
-Both paths converge on flash_uf2(), which copies the .uf2 onto the
-bootloader's RPI-RP2 volume, and falls back to `picotool load -f` only if
-that volume never appears (as can happen over SSH on a headless machine).
-The copy comes first because it needs no privileged setup anywhere, while
-picotool needs a udev rule on Linux or a Zadig-installed WinUSB driver on
-Windows.
+upload() tries three mechanisms in that rough order: the bootloader's
+RPI-RP2 volume, then `picotool load -f`, then the serial trigger followed
+by another round of the first two. The volume copy leads because it needs
+no privileged setup anywhere, while picotool needs a udev rule on Linux or
+a Zadig-installed WinUSB driver on Windows. picotool nonetheless comes
+before the serial trigger: its -f will itself force a running board into
+the bootloader, without depending on the firmware's trigger listener.
 
 Because the board's identity depends on its mode, the "pico" board
 definition deliberately carries no "usb" section -- apio's board-level
@@ -75,6 +76,14 @@ _TRIGGER_ATTEMPTS = 3
 # -- USB re-enumeration after a triggered reboot, plus the time a desktop
 # -- takes to auto-mount the bootloader volume on the mass-storage path.
 _BOOTSEL_WAIT_SECONDS = 10.0
+
+# -- The first flash attempt, made before the serial trigger, gets no
+# -- retry budget at all: a single round of volume-then-picotool. There is
+# -- nothing to wait for yet -- no reboot has been requested, so the board
+# -- is either already flashable or it isn't -- and any time spent polling
+# -- here only delays the serial trigger in the common case of a board
+# -- that is simply running the firmware.
+_QUICK_FLASH_WAIT_SECONDS = 0.0
 
 _POLL_INTERVAL_SECONDS = 0.5
 
@@ -423,23 +432,58 @@ def _no_board_message(
     return "\n".join(lines)
 
 
-def flash_uf2(uf2_path: Path, reboot_failed: bool = False) -> None:
+def _attempt_flash(
+    uf2_path: Path, picotool: Optional[str]
+) -> tuple[bool, Optional[str]]:
+    """One round of the flash sequence. Returns (flashed, picotool_error).
+
+    Copies the .uf2 onto the bootloader's RPI-RP2 volume if it can, and
+    only falls back to `picotool load -f` if it can't. That order is
+    deliberate: the copy is the path that needs no privileged setup on any
+    platform, and in testing it is the one that actually performed every
+    successful flash. picotool talks to the board's PICOBOOT interface
+    directly, which needs a driver the user is unlikely to have -- a udev
+    rule on Linux, or a WinUSB driver installed via Zadig on Windows --
+    and it failed on every real machine tried."""
+
+    volume = find_bootsel_volume()
+    if volume:
+        _say(f"Copying to {volume}")
+        flash_via_mass_storage(uf2_path, volume)
+        return True, None
+
+    if picotool:
+        picotool_error = _run_picotool(picotool, uf2_path)
+        if picotool_error is None:
+            _say("Flashed with picotool.")
+            return True, None
+        return False, picotool_error
+
+    return False, None
+
+
+def flash_uf2(
+    uf2_path: Path,
+    reboot_failed: bool = False,
+    wait_seconds: float = _BOOTSEL_WAIT_SECONDS,
+    raise_on_failure: bool = True,
+) -> bool:
     """Flashes uf2_path to a board in BOOTSEL mode, polling until one
     shows up (it may still be re-enumerating after a triggered reboot).
+    Returns True if it flashed.
+
+    `wait_seconds` bounds the retrying, and `raise_on_failure` says
+    whether running out of time is an error. upload() calls this twice:
+    once with no retry budget and no raising, as a first attempt before
+    the serial reboot trigger, and once afterwards for real.
 
     `reboot_failed` says the board ignored the reboot trigger. It only
     affects the wording if the flash then fails too; on success it stays
     unmentioned, since a board that got into BOOTSEL some other way is
     not a problem worth reporting.
 
-    Each round copies the .uf2 onto the bootloader's RPI-RP2 volume if it
-    can, and only falls back to `picotool load -f` if it can't. That order
-    is deliberate: the copy is the path that needs no privileged setup on
-    any platform, and in testing it is the one that actually performed
-    every successful flash. picotool talks to the board's PICOBOOT
-    interface directly, which needs a driver the user is unlikely to
-    have -- a udev rule on Linux, or a WinUSB driver installed via Zadig
-    on Windows -- and it failed on every real machine tried.
+    Each round runs _attempt_flash(): the RPI-RP2 volume copy first,
+    `picotool load -f` second.
 
     picotool is kept rather than dropped because the two paths fail in
     different circumstances, not the same ones. The copy needs the volume
@@ -456,20 +500,12 @@ def flash_uf2(uf2_path: Path, reboot_failed: bool = False) -> None:
 
     picotool = shutil.which("picotool")
     picotool_error = None
-    deadline = time.monotonic() + _BOOTSEL_WAIT_SECONDS
+    deadline = time.monotonic() + wait_seconds
 
     while True:
-        volume = find_bootsel_volume()
-        if volume:
-            _say(f"Copying to {volume}")
-            flash_via_mass_storage(uf2_path, volume)
-            return
-
-        if picotool:
-            picotool_error = _run_picotool(picotool, uf2_path)
-            if picotool_error is None:
-                _say("Flashed with picotool.")
-                return
+        flashed, picotool_error = _attempt_flash(uf2_path, picotool)
+        if flashed:
+            return True
 
         # -- The deadline bounds how long we keep *retrying*, not the
         # -- wall-clock runtime: a round already in progress runs to
@@ -477,9 +513,13 @@ def flash_uf2(uf2_path: Path, reboot_failed: bool = False) -> None:
         # -- it can call has its own timeout, so the whole loop always
         # -- terminates -- which is the part that previously did not hold.
         if time.monotonic() >= deadline:
-            raise UploadError(
-                _no_board_message(picotool, picotool_error, reboot_failed)
-            )
+            if raise_on_failure:
+                raise UploadError(
+                    _no_board_message(
+                        picotool, picotool_error, reboot_failed
+                    )
+                )
+            return False
         time.sleep(_POLL_INTERVAL_SECONDS)
 
 
@@ -488,12 +528,38 @@ def upload(
     vendor_id: str = _FIRMWARE_VID,
     product_id: str = _FIRMWARE_PID,
 ) -> None:
-    """Full upload flow, tolerant of either board state: reboot the board
-    into its bootloader if it's running apio firmware, then flash. A
-    board already in BOOTSEL mode skips straight to the flash."""
+    """Full upload flow, tolerant of either board state.
+
+    Three mechanisms are tried in order, each one needing more of the
+    board than the last:
+
+      1. The RPI-RP2 volume, for a board already sitting in BOOTSEL.
+      2. `picotool load -f`, which needs no serial port -- and whose -f
+         forces a *running* board into its bootloader over PICOBOOT, so
+         it can recover a board the volume check didn't see.
+      3. The serial reboot trigger: send 'b' to a board running apio
+         firmware, wait for it to leave the bus, then flash it via 1/2
+         once it comes back up in BOOTSEL.
+
+    Steps 1 and 2 are one no-retry round of flash_uf2(); step 3 ends in a
+    second, polling call that owns the failure diagnostics."""
 
     if not uf2_path.is_file():
         raise UploadError(f"firmware file not found: {uf2_path}")
+
+    _say(f"Flashing {uf2_path}")
+
+    # -- Nothing is said about this attempt failing: the board is most
+    # -- likely just running the firmware, which the trigger below
+    # -- handles, and reporting it mid-flow would make a working upload
+    # -- look broken.
+    if flash_uf2(
+        uf2_path,
+        wait_seconds=_QUICK_FLASH_WAIT_SECONDS,
+        raise_on_failure=False,
+    ):
+        _say("Upload complete.")
+        return
 
     reboot_failed = False
     port = find_running_firmware_port(vendor_id, product_id)
@@ -511,7 +577,6 @@ def upload(
             "already in BOOTSEL mode."
         )
 
-    _say(f"Flashing {uf2_path}")
     flash_uf2(uf2_path, reboot_failed=reboot_failed)
     _say("Upload complete.")
 
