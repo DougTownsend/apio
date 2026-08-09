@@ -10,10 +10,18 @@
     "description": "Apio definitions",
     "env": {}
   },
-  // "examples" package
+  // "examples" package. Marked "on-demand": apio never installs it on
+  // its own, not even in 'apio packages install'. Only
+  // 'apio examples fetch' downloads it, the one command that cannot do
+  // its job without it. Commands that merely report on examples, such
+  // as 'apio examples list' and 'apio boards', treat it as absent and
+  // carry on. Keeping the examples out of the default install is
+  // deliberate: they are a large download that most users of this fork
+  // never touch, and upstream refreshed them as a side effect of
+  // unrelated commands.
   "examples": {
     "description": "Apio project examples",
-    "restricted-to-platforms": [],
+    "on-demand": true,
     "env": {}
   },
   // "oss-cad-suite" package

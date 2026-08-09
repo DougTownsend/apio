@@ -82,6 +82,14 @@ def print_packages_report(apio_ctx: ApioContext) -> bool:
             package_name, "Uninstalled", INFO
         )
 
+    # -- Collect rows of on-demand packages that are not installed. This is
+    # -- their normal state, so it is reported as such and not as a gap.
+    for package_name in scan.uninstalled_on_demand_package_names:
+        assert package_name not in required_packages_rows
+        required_packages_rows[package_name] = RequiredPackageRow(
+            package_name, "On demand", INFO
+        )
+
     # -- Collect rows of required packages have version or platform mismatch.
     for package_name in scan.bad_version_package_names:
         assert package_name not in required_packages_rows
@@ -217,8 +225,12 @@ def _install_cli(
     # -- of the latest remote config file.
     packages.scan_and_fix_packages(apio_ctx.packages_context)
 
-    # -- Install the packages, one by one.
+    # -- Install the packages, one by one. On-demand packages are skipped
+    # -- deliberately: they are installed by the command that needs them,
+    # -- not as part of a complete install.
     for package in apio_ctx.required_packages:
+        if packages.is_on_demand_package(apio_ctx.packages_context, package):
+            continue
         packages.install_package(
             apio_ctx.packages_context,
             package_name=package,

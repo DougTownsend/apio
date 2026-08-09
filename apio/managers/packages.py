@@ -193,6 +193,25 @@ def _delete_package_dir(
     return dir_found
 
 
+def is_on_demand_package(packages_ctx: PackagesContext, name: str) -> bool:
+    """Returns True if the named package is installed only on demand,
+    by the one command that needs it, rather than by
+    'apio packages install'. See packages.jsonc."""
+
+    package_info = packages_ctx.required_packages.get(name, {})
+    return bool(package_info.get("on-demand", False))
+
+
+def on_demand_package_names(packages_ctx: PackagesContext) -> List[str]:
+    """Returns the names of the packages that are installed on demand."""
+
+    return [
+        name
+        for name in packages_ctx.required_packages
+        if is_on_demand_package(packages_ctx, name)
+    ]
+
+
 def scan_and_fix_packages(packages_ctx: PackagesContext) -> bool:
     """Scan the packages and fix if there are errors. Returns true
     if the packages are installed ok."""
@@ -237,6 +256,11 @@ def verify_required_packages(packages_ctx: PackagesContext) -> None:
 
     missing = []
     for package_name in packages_ctx.required_packages:
+        # -- On-demand packages are not part of a complete install, so
+        # -- their absence is the normal state and never blocks a command.
+        # -- The command that needs one installs it itself.
+        if is_on_demand_package(packages_ctx, package_name):
+            continue
         in_profile = package_name in packages_ctx.profile.installed_packages
         has_dir = (packages_ctx.packages_dir / package_name).is_dir()
         if not (in_profile and has_dir):
@@ -253,6 +277,45 @@ def verify_required_packages(packages_ctx: PackagesContext) -> None:
         style=INFO,
     )
     sys.exit(1)
+
+
+def ensure_on_demand_package(
+    packages_ctx: PackagesContext, package_name: str, *, verbose: bool = False
+) -> None:
+    """Installs an on-demand package if it is not already installed, and
+    returns once it is available. Intended for the command that cannot do
+    its job without the package -- 'apio examples fetch' and the examples
+    package -- which is the only point at which apio fetches it.
+
+    This is the one deliberate exception to 'only apio packages install
+    reaches the network'. It is bounded: it downloads a package the user
+    just asked to use, only when it is absent, and it leaves every other
+    package alone."""
+
+    assert is_on_demand_package(packages_ctx, package_name), package_name
+
+    # -- Already installed and registered. Nothing to do, and in
+    # -- particular no version check and no network access, so a
+    # -- provisioned environment stays as it was provisioned.
+    in_profile = package_name in packages_ctx.profile.installed_packages
+    has_dir = (packages_ctx.packages_dir / package_name).is_dir()
+    if in_profile and has_dir:
+        return
+
+    # -- A half-installed package would make the install fail, so clear it
+    # -- out first. This mirrors what _fix_packages does for broken ones.
+    if in_profile or has_dir:
+        cout(f"Uninstalling broken package '{package_name}'")
+        _delete_package_dir(packages_ctx, package_name, verbose=verbose)
+        packages_ctx.profile.remove_package(package_name)
+
+    cout(f"Package '{package_name}' is needed and is not installed yet.")
+    install_package(
+        packages_ctx,
+        package_name=package_name,
+        force_reinstall=False,
+        verbose=verbose,
+    )
 
 
 def install_missing_packages_on_the_fly(
@@ -473,6 +536,10 @@ class PackageScanResults:
     bad_version_package_names: List[str]
     # -- Normal. Packages in required_packages that are uninstalled properly.
     uninstalled_package_names: List[str]
+    # -- Normal. On-demand packages that are not installed. Tracked apart
+    # -- from uninstalled_package_names because a complete, healthy install
+    # -- is expected not to have them.
+    uninstalled_on_demand_package_names: List[str]
     # -- Error. Packages in required_packages with broken installation. E.g,
     # -- registered in profile but package directory is missing.
     broken_package_names: List[str]
@@ -520,6 +587,7 @@ class PackageScanResults:
         cout(f"  Installed     {self.installed_ok_package_names}")
         cout(f"  bad version   {self.bad_version_package_names}")
         cout(f"  Uninstalled   {self.uninstalled_package_names}")
+        cout(f"  On demand     {self.uninstalled_on_demand_package_names}")
         cout(f"  Broken        {self.broken_package_names}")
         cout(f"  Orphan ids    {self.orphan_package_names}")
         cout(f"  Orphan dirs   {self.orphan_dir_names}")
@@ -564,7 +632,7 @@ def scan_packages(packages_ctx: PackagesContext) -> PackageScanResults:
     assert isinstance(packages_ctx, PackagesContext)
 
     # Initialize the result with empty data.
-    result = PackageScanResults([], [], [], [], [], [], [])
+    result = PackageScanResults([], [], [], [], [], [], [], [])
 
     # -- A helper set that we populate with the 'folder_name' values of the
     # -- all the packages for this platform.
@@ -590,8 +658,14 @@ def scan_packages(packages_ctx: PackagesContext) -> PackageScanResults:
                 # -- Case 2: Package installed but version mismatch.
                 result.bad_version_package_names.append(package_name)
         elif not in_profile and not has_dir:
-            # -- Case 3: Package not installed.
-            result.uninstalled_package_names.append(package_name)
+            # -- Case 3: Package not installed. For an on-demand package
+            # -- that is the expected resting state, not a gap to report.
+            if is_on_demand_package(packages_ctx, package_name):
+                result.uninstalled_on_demand_package_names.append(
+                    package_name
+                )
+            else:
+                result.uninstalled_package_names.append(package_name)
         else:
             # -- Case 4: Package is broken.
             result.broken_package_names.append(package_name)

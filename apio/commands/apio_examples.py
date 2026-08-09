@@ -20,6 +20,7 @@ from apio.common import apio_console
 from apio.common.apio_console import cout, ctable, cwrite
 from apio.common.apio_styles import INFO, BORDER, EMPH1
 from apio.managers.examples import Examples, ExampleInfo
+from apio.managers import packages
 from apio.commands import options
 from apio.apio_context import (
     ApioContext,
@@ -59,6 +60,18 @@ def list_examples(apio_ctx: ApioContext, verbose: bool) -> None:
 
     # -- Get list of examples.
     entries: List[ExampleInfo] = Examples(apio_ctx).get_examples_infos()
+
+    # -- The examples package is installed on demand, so an empty list
+    # -- normally means it was never fetched rather than that there are no
+    # -- examples. Say so, instead of printing an empty table.
+    if not entries:
+        cout("No examples are installed.", style=INFO)
+        cout(
+            "Run 'apio examples fetch <board>/<example>' to fetch one, "
+            "which also installs the examples package.",
+            style=INFO,
+        )
+        return
 
     # -- Sort boards by case insensitive board id.
     entries.sort(key=examples_sort_key)
@@ -251,12 +264,19 @@ def _fetch_cli(
 ):
     """Implements the 'apio examples fetch' command."""
 
-    # -- Create the apio context.
+    # -- Create the apio context. CACHED_OK rather than OFFLINE_OK because
+    # -- installing the examples package needs the remote config that
+    # -- names its release, and this command may run before any
+    # -- 'apio packages install' has cached one.
     apio_ctx = ApioContext(
         project_policy=ProjectPolicy.NO_PROJECT,
-        remote_config_policy=RemoteConfigPolicy.OFFLINE_OK,
+        remote_config_policy=RemoteConfigPolicy.CACHED_OK,
         packages_policy=PackagesPolicy.ENSURE_PACKAGES,
     )
+
+    # -- Fetching an example is the one operation that cannot proceed
+    # -- without the examples package, so this is where apio downloads it.
+    packages.ensure_on_demand_package(apio_ctx.packages_context, "examples")
 
     # -- Create the examples manager.
     examples = Examples(apio_ctx)

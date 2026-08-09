@@ -164,6 +164,9 @@ PACKAGES_SCHEMA = {
                     "type": "array",
                     "items": {"type": "string"},
                 },
+                # -- A package that apio knows how to install but never
+                # -- installs on its own. See packages.jsonc.
+                "on-demand": {"type": "boolean"},
                 "env": {
                     "type": "object",
                     "properties": {

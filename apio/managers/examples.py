@@ -74,6 +74,13 @@ class Examples:
         """Scans the examples and returns a list of ExampleInfos.
         Returns null if an error."""
 
+        # -- The examples package is not installed by this fork, so the
+        # -- dir is normally absent. Report that as "no examples" rather
+        # -- than letting iterdir() raise -- callers such as 'apio boards'
+        # -- only want the per-board counts and shouldn't fail over it.
+        if not self.examples_dir.is_dir():
+            return []
+
         # -- Collect the examples home dir each board.
         boards_dirs: List[Path] = []
 

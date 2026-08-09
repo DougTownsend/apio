@@ -12,13 +12,15 @@ from pathlib import Path, PurePosixPath
 from typing import List, Union, cast, Optional, Dict, Any, Tuple
 import os
 from urllib.parse import urlparse
+from urllib.request import url2pathname
 from pprint import pprint
 import pytest
 from click.testing import CliRunner, Result
 from apio import __main__
 from apio.common import apio_console
 from apio.common.proto.apio_pb2 import FORCE_PIPE, FORCE_TERMINAL
-from apio.utils import jsonc
+from apio.profile import get_datetime_stamp
+from apio.utils import jsonc, util
 
 
 # -- Debug mode on/off
@@ -442,6 +444,38 @@ class ApioRunner:
         """Returns the sandbox object or None if not in a sandbox."""
         return self._sandbox
 
+    @staticmethod
+    def _seed_cached_remote_config(home_dir: Path, config_url: str) -> None:
+        """Write a profile.json into the sandbox home dir with the remote
+        config already cached, mimicking a machine on which 'apio packages
+        install' has run. The config is read from the local depot copy that
+        config_url points at, and stamped with the same metadata a real
+        fetch writes, so the cache reads as fresh and same-url and no
+        command decides it needs refreshing."""
+
+        # -- Resolve the {major}/{minor} placeholders exactly as Profile
+        # -- does, so both the file we read and the url we record as the
+        # -- cache's origin match what the command under test will resolve.
+        ver_tuple = util.get_apio_version_tuple()
+        resolved_url = config_url.replace("{major}", str(ver_tuple[0]))
+        resolved_url = resolved_url.replace("{minor}", str(ver_tuple[1]))
+        assert "{" not in resolved_url, resolved_url
+
+        config_path = Path(url2pathname(urlparse(resolved_url).path))
+        json_text = jsonc.to_json(config_path.read_text(encoding="utf8"))
+        remote_config = json.loads(json_text)
+
+        remote_config["metadata"] = {
+            "loaded-by": util.get_apio_version_str(),
+            "loaded-at": get_datetime_stamp(),
+            "loaded-from": resolved_url,
+        }
+
+        home_dir.mkdir(parents=True, exist_ok=True)
+        profile_path = home_dir / "profile.json"
+        with profile_path.open("w", encoding="utf8") as f:
+            json.dump({"remote-config": remote_config}, f, indent=4)
+
     @contextlib.contextmanager
     def in_sandbox(self):
         """Create an apio sandbox context manager that delete the temp dir
@@ -505,6 +539,16 @@ class ApioRunner:
 
         # Set the URL in the environment
         os.environ["APIO_REMOTE_CONFIG_URL"] = local_config_url
+
+        # -- Seed the profile's cached remote config, which is what
+        # -- 'apio packages install' leaves behind. The sandbox already
+        # -- presents a machine whose packages are installed, by pointing
+        # -- APIO_PACKAGES at a pre-populated cache, and this is the other
+        # -- half of that state. Apio commands other than 'apio packages
+        # -- install' never fetch, so without it every sandbox looks like a
+        # -- fresh install and the command under test exits with "Apio
+        # -- packages are not installed yet" before reaching its own logic.
+        self._seed_cached_remote_config(home_dir, local_config_url)
 
         # -- Reset the apio console, since we run multiple sandboxes in the
         # -- same process.
