@@ -146,7 +146,7 @@
     }
   },
 
-  // "cmake" package (builds the pico-target C firmware). Official
+  // "cmake" package (builds the pico-target C++ firmware). Official
   // Kitware prebuilt binaries.
   "cmake-linux-x86-64": {
     "restricted-to-platforms": [

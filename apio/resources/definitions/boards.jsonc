@@ -1,0 +1,14 @@
+// Board definitions provided by this Apio distribution in addition to the
+// separately installed upstream definitions package.
+{
+  "pico": {
+    "description": "Raspberry Pi Pico — RP2040-based board running Apio's software Verilog interpreter",
+    "fpga-id": "rp2040",
+    "programmer": {
+      "id": "pico"
+    }
+    // -- Deliberately no "usb" section. A Pico has separate USB identities
+    // -- for its running firmware and BOOTSEL bootloader. The Pico uploader
+    // -- detects both modes directly and can report which one it found.
+  }
+}

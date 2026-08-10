@@ -12,10 +12,10 @@ apio.ini `constraint-file` mechanism, just reinterpreting `<pin>` as an
 RP2040 GPIO number instead of an FPGA package pin name, and parsing it
 here since nextpnr isn't in the pico build pipeline to parse it for us.
 
-`<pin>` may also be apio.pico.codegen.INTERNAL_PIN (-1), for a signal
+`<pin>` may also be apio.pico.cxxrtl.INTERNAL_PIN (-1), for a signal
 that shouldn't consume a real GPIO -- e.g. `set_io clk -1` gives a design
 a free-running clock without spending one of the Pico's GPIOs on it. This
-isn't specific to clk; see codegen.py for what INTERNAL_PIN does.
+isn't specific to clk; see cxxrtl.py for what INTERNAL_PIN does.
 """
 
 import re

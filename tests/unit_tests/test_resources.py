@@ -3,6 +3,7 @@ Tests of apio_context.py
 """
 
 import re
+from pathlib import Path
 from tests.conftest import ApioRunner
 from apio.utils import resource_util
 from apio.apio_context import (
@@ -66,6 +67,26 @@ def test_resources_references(apio_runner: ApioRunner):
 
         # -- We should end up with an empty set of unused programmers.
         assert not unused_programmers, unused_programmers
+
+
+def test_bundled_pico_definitions(apio_runner: ApioRunner):
+    """Pico definitions are available without project-local JSONC files."""
+
+    with apio_runner.in_sandbox():
+        assert not any(
+            Path(name).exists()
+            for name in ("boards.jsonc", "fpgas.jsonc", "programmers.jsonc")
+        )
+
+        apio_ctx = ApioContext(
+            project_policy=ProjectPolicy.NO_PROJECT,
+            remote_config_policy=RemoteConfigPolicy.CACHED_OK,
+            packages_policy=PackagesPolicy.ENSURE_PACKAGES,
+        )
+
+        assert apio_ctx.boards["pico"]["fpga-id"] == "rp2040"
+        assert apio_ctx.fpgas["rp2040"]["arch"] == "pico"
+        assert apio_ctx.programmers["pico"]["command"] == "${PYTHON}"
 
 
 def test_resources_ids_and_order(apio_runner: ApioRunner):

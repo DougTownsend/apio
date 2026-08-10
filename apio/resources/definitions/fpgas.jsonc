@@ -1,0 +1,11 @@
+// FPGA definitions provided by this Apio distribution in addition to the
+// separately installed upstream definitions package. RP2040 is a pseudo-FPGA
+// entry used to dispatch builds to the Pico architecture plugin.
+{
+  "rp2040": {
+    "part-num": "RP2040",
+    "arch": "pico",
+    "size": "n/a",
+    "pico-params": {}
+  }
+}

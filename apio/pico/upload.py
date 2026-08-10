@@ -10,8 +10,8 @@ work with whichever one is in front of it:
 
   - Running the apio firmware: a CDC serial device at 2E8A:000A. Here we
     send it a 'b' byte over that port -- the firmware's
-    check_bootloader_trigger() (apio/pico/codegen.py) responds by calling
-    the pico-sdk's reset_usb_boot(), rebooting into the bootloader -- and
+    the generated CXXRTL wrapper responds by calling the pico-sdk's
+    reset_usb_boot(), rebooting into the bootloader -- and
     then wait for the port to disappear, confirming the reset took.
 
 upload() tries three mechanisms in that rough order: the bootloader's
@@ -46,7 +46,7 @@ import serial
 
 from apio.utils.serial_util import scan_serial_devices, SerialDeviceFilter
 
-# -- Matches apio/pico/codegen.py's check_bootloader_trigger().
+# -- Matches the trigger byte handled by apio/pico/cxxrtl.py's wrapper.
 _REBOOT_TRIGGER_BYTE = b"b"
 
 # -- USB ids of a Pico running the apio firmware, i.e. pico-sdk's

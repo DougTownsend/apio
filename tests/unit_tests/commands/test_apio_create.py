@@ -27,11 +27,34 @@ def test_create(apio_runner: ApioRunner):
         apio_ini = Path("apio.ini")
         assert not exists(apio_ini)
 
-        # -- Execute "apio create"
-        result = sb.invoke_apio_cmd(apio, ["create"])
-        assert result.exit_code != 0, result.output
-        assert "Error: Missing option" in result.output
-        assert not exists(apio_ini)
+        # -- Execute bare "apio create" and select Pico.
+        result = sb.invoke_apio_cmd(apio, ["create"], input_text="1\n")
+        sb.assert_result_ok(result)
+        assert "1. Raspberry Pi Pico" in result.output
+        assert "2. UPduino 3.1" in result.output
+        _check_ini_file(apio_ini, {"board": "pico", "top-module": "main"})
+
+        # -- Select UPduino 3.1 from the same prompt.
+        result = sb.invoke_apio_cmd(
+            apio,
+            ["create", "--project-dir", "upduino-project"],
+            input_text="2\n",
+        )
+        sb.assert_result_ok(result)
+        _check_ini_file(
+            Path("upduino-project") / apio_ini,
+            {"board": "upduino31", "top-module": "main"},
+        )
+
+        # -- An explicit Pico board works without project-local definitions.
+        result = sb.invoke_apio_cmd(
+            apio, ["create", "--board", "pico", "-p", "pico-project"]
+        )
+        sb.assert_result_ok(result)
+        _check_ini_file(
+            Path("pico-project") / apio_ini,
+            {"board": "pico", "top-module": "main"},
+        )
 
         # -- Execute "apio create --board no-such-board"
         result = sb.invoke_apio_cmd(
@@ -39,14 +62,18 @@ def test_create(apio_runner: ApioRunner):
         )
         assert result.exit_code == 1, result.output
         assert "Error: Unknown board id 'no-such-board'" in result.output
-        assert not exists(apio_ini)
+        _check_ini_file(apio_ini, {"board": "pico", "top-module": "main"})
 
-        # -- Execute "apio create --board alhambra-ii"
-        result = sb.invoke_apio_cmd(apio, ["create", "--board", "alhambra-ii"])
+        # -- Explicit boards outside the classroom prompt remain supported.
+        result = sb.invoke_apio_cmd(
+            apio,
+            ["create", "--board", "alhambra-ii", "-p", "other-board"],
+        )
         sb.assert_result_ok(result)
         assert "was created successfully." in result.output
         _check_ini_file(
-            apio_ini, {"board": "alhambra-ii", "top-module": "main"}
+            Path("other-board") / apio_ini,
+            {"board": "alhambra-ii", "top-module": "main"},
         )
 
         # -- Execute "apio create --board alhambra-ii
@@ -59,12 +86,15 @@ def test_create(apio_runner: ApioRunner):
                 "alhambra-ii",
                 "--top-module",
                 "my_module",
+                "-p",
+                "other-board",
             ],
         )
         assert result.exit_code != 0
         assert "Error: The file apio.ini already exists." in result.output
         _check_ini_file(
-            apio_ini, {"board": "alhambra-ii", "top-module": "main"}
+            Path("other-board") / apio_ini,
+            {"board": "alhambra-ii", "top-module": "main"},
         )
 
         # -- Execute "apio create --board alhambra-ii -p aa/bb"

@@ -1,14 +1,10 @@
-"""Compiles the codegen'd C firmware into a .uf2 using pico-sdk + CMake +
-arm-none-eabi-gcc.
+"""Compiles CXXRTL-based C++ firmware into a .uf2 using pico-sdk + CMake.
 
-This is the one part of the pico target that genuinely needs the real
-toolchain (arm-none-eabi-gcc, cmake, pico-sdk) installed to exercise --
-it has not yet been run end-to-end against real hardware. Wiring these
-three tools into apio's package system (`apio packages install`) the same
-way `oss-cad-suite` is distributed today is tracked separately; for now
-this module expects them to be discoverable via PATH / PICO_SDK_PATH.
+The compiler, SDK, Ninja, picotool, and TinyUSB are resolved from Apio's
+installed packages, with environment/PATH fallbacks for development setups.
 """
 
+import hashlib
 import os
 import shutil
 import subprocess
@@ -22,8 +18,14 @@ cmake_minimum_required(VERSION 3.13)
 include($ENV{{PICO_SDK_PATH}}/pico_sdk_init.cmake)
 project(apio_pico_firmware C CXX ASM)
 set(CMAKE_C_STANDARD 11)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 pico_sdk_init()
-add_executable(firmware {c_file_name})
+add_executable(firmware {cpp_file_name})
+target_include_directories(firmware PRIVATE "{cxxrtl_runtime_dir}")
+target_compile_definitions(firmware PRIVATE CXXRTL_NDEBUG)
+target_compile_options(
+  firmware PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-fno-exceptions;-fno-rtti>)
 target_link_libraries(firmware pico_stdlib)
 pico_enable_stdio_usb(firmware 1)
 pico_enable_stdio_uart(firmware 0)
@@ -74,8 +76,12 @@ def _find_package_dir(name: str, marker: str) -> Optional[Path]:
     for package_dir in sorted(packages_dir.glob(f"{name}-*")):
         if not package_dir.is_dir():
             continue
-        # -- The versioned payload directory inside the package.
-        for payload_dir in sorted(package_dir.glob(f"{name}-*")):
+        # -- The payload directory inside the package. Most packages use a
+        # -- versioned name; a few (notably picotool) use just the package
+        # -- name, so inspect every immediate child.
+        for payload_dir in sorted(package_dir.iterdir()):
+            if not payload_dir.is_dir():
+                continue
             if (payload_dir / marker).exists():
                 return payload_dir
         # -- Some archives extract without a wrapping versioned directory.
@@ -162,30 +168,80 @@ def _get_ninja_exe() -> str:
     )
 
 
-def build_uf2(generated_c: Path, uf2_target: Path) -> int:
-    """Builds `generated_c` into a .uf2 at `uf2_target`. Returns 0 on
+def _get_picotool_dir() -> Optional[Path]:
+    """Returns a packaged picotool CMake config directory, if available."""
+
+    env_path = os.environ.get("picotool_DIR")
+    if env_path and (Path(env_path) / "picotoolConfig.cmake").exists():
+        return Path(env_path)
+    return _find_package_dir("picotool", "picotoolConfig.cmake")
+
+
+def build_uf2(
+    generated_cpp: Path,
+    uf2_target: Path,
+    cxxrtl_runtime_dir: Path,
+) -> int:
+    """Builds `generated_cpp` into a .uf2 at `uf2_target`. Returns 0 on
     success, non-zero (and prints diagnostics) on failure, matching the
     SCons Action function-action convention."""
 
     try:
         _require_tool("cmake")
         _require_tool("arm-none-eabi-gcc")
-        os.environ["PICO_SDK_PATH"] = _get_pico_sdk_path()
-        os.environ["PICO_TINYUSB_PATH"] = _get_tinyusb_path()
+        _require_tool("arm-none-eabi-g++")
+        if not (cxxrtl_runtime_dir / "cxxrtl" / "cxxrtl.h").exists():
+            raise PicoBuildError(
+                f"CXXRTL runtime headers not found at {cxxrtl_runtime_dir}"
+            )
+        sdk_path = _get_pico_sdk_path()
+        tinyusb_path = _get_tinyusb_path()
+        os.environ["PICO_SDK_PATH"] = sdk_path
+        os.environ["PICO_TINYUSB_PATH"] = tinyusb_path
 
-        build_dir = generated_c.parent / "_pico_cmake_build"
-        build_dir.mkdir(exist_ok=True)
-
-        cmake_lists = build_dir / "CMakeLists.txt"
-        cmake_lists.write_text(
-            _CMAKE_LISTS_TEMPLATE.format(c_file_name=generated_c.name),
-            encoding="utf-8",
+        build_dir = generated_cpp.parent / "_pico_cmake_build"
+        cmake_text = _CMAKE_LISTS_TEMPLATE.format(
+            cpp_file_name=generated_cpp.name,
+            cxxrtl_runtime_dir=cxxrtl_runtime_dir.as_posix(),
         )
-        shutil.copy(generated_c, build_dir / generated_c.name)
 
         # -- Pin the generator and point cmake straight at the packaged
         # -- ninja, rather than relying on it being found on PATH.
         ninja_exe = _get_ninja_exe()
+        picotool_dir = _get_picotool_dir()
+
+        # -- CMake caches the SDK toolchain and platform paths deeply. A
+        # -- build tree configured with a different SDK cannot be repaired
+        # -- by merely changing PICO_SDK_PATH; it combines both trees and
+        # -- fails with misleading add_subdirectory errors. Keep a compact
+        # -- identity for everything that affects configuration and discard
+        # -- only this generated build directory when that identity changes.
+        configure_identity = "\n".join(
+            [
+                cmake_text,
+                sdk_path,
+                tinyusb_path,
+                str(cxxrtl_runtime_dir),
+                ninja_exe,
+                str(picotool_dir or ""),
+            ]
+        )
+        configure_digest = hashlib.sha256(
+            configure_identity.encode("utf-8")
+        ).hexdigest()
+        stamp_file = build_dir / ".apio-config"
+        old_digest = (
+            stamp_file.read_text(encoding="utf-8").strip()
+            if stamp_file.exists()
+            else None
+        )
+        if build_dir.exists() and old_digest != configure_digest:
+            shutil.rmtree(build_dir)
+        build_dir.mkdir(exist_ok=True)
+
+        cmake_lists = build_dir / "CMakeLists.txt"
+        cmake_lists.write_text(cmake_text, encoding="utf-8")
+        shutil.copy(generated_cpp, build_dir / generated_cpp.name)
 
         # -- A cache left by a different generator makes configure fail
         # -- outright ("does not match the generator used previously"),
@@ -197,19 +253,19 @@ def build_uf2(generated_c: Path, uf2_target: Path) -> int:
             if "CMAKE_GENERATOR:INTERNAL=Ninja" not in cached:
                 cache_file.unlink()
                 shutil.rmtree(build_dir / "CMakeFiles", ignore_errors=True)
-        subprocess.run(
-            [
-                "cmake",
-                "-G",
-                "Ninja",
-                f"-DCMAKE_MAKE_PROGRAM={ninja_exe}",
-                "-S",
-                str(build_dir),
-                "-B",
-                str(build_dir),
-            ],
-            check=True,
+        configure_command = [
+            "cmake",
+            "-G",
+            "Ninja",
+            f"-DCMAKE_MAKE_PROGRAM={ninja_exe}",
+        ]
+        if picotool_dir:
+            configure_command.append(f"-Dpicotool_DIR={picotool_dir}")
+        configure_command.extend(
+            ["-S", str(build_dir), "-B", str(build_dir)]
         )
+        subprocess.run(configure_command, check=True)
+        stamp_file.write_text(configure_digest + "\n", encoding="utf-8")
         subprocess.run(
             ["cmake", "--build", str(build_dir), "--target", "firmware"],
             check=True,

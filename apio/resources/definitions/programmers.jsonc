@@ -1,0 +1,8 @@
+// Programmer definitions provided by this Apio distribution in addition to
+// the separately installed upstream definitions package.
+{
+  "pico": {
+    "command": "${PYTHON}",
+    "args": "-m apio.pico.upload ${BIN_FILE}"
+  }
+}

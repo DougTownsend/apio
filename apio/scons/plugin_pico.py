@@ -3,16 +3,15 @@
 """Apio scons plugin for the pico (Raspberry Pi Pico / RP2040) target.
 
 Unlike the FPGA architectures (ice40/ecp5/gowin/xilinx), this target does
-not synthesize a bitstream. It generates C firmware that *interprets* the
-design's logic in a loop, running on the Pico's own Cortex-M0+ core. See
-apio/pico/codegen.py for the interpretation semantics.
+not synthesize a bitstream. Yosys's CXXRTL backend turns the design into a
+C++ model which is wrapped with Pico GPIO access and compiled as firmware.
 
 apio's build pipeline is hard-wired as synth -> pnr -> bitstream
 (scons_handler.py:_register_common_targets). This plugin reuses those three
 stages for a different purpose:
-  - synth_builder:     yosys generic synthesis  (.v  -> .json netlist)
-  - pnr_builder:       netlist -> C codegen      (.json + .pcf -> .c)
-  - bitstream_builder: native compile            (.c -> .uf2, via pico-sdk)
+  - synth_builder:     Yosys CXXRTL generation   (.v -> .cxxrtl.cc)
+  - pnr_builder:       add Pico GPIO wrapper     (.cxxrtl.cc + .pcf -> .cc)
+  - bitstream_builder: native compile            (.cc -> .uf2, via pico-sdk)
 """
 
 from pathlib import Path
@@ -24,9 +23,8 @@ from apio.scons.apio_env import ApioEnv
 from apio.scons.plugin_base import PluginBase, ArchPluginInfo
 from apio.scons.plugin_util import get_define_flags
 from apio.common.apio_console import cerror
-from apio.pico.netlist import parse_yosys_json, NetlistError
 from apio.pico.pcf import parse_pcf, PcfError
-from apio.pico.codegen import generate_c
+from apio.pico.cxxrtl import generate_firmware, CxxrtlError
 from apio.pico import runtime as pico_runtime
 
 
@@ -37,90 +35,95 @@ class PluginPico(PluginBase):
         """Return plugin specific parameters."""
         return ArchPluginInfo(
             constrains_file_suffix=".pcf",
-            pnr_file_suffix=".c",
+            pnr_file_suffix=".cc",
             bitstream_file_suffix=".uf2",
             clk_name_index=0,
         )
 
     # @overrides
     def synth_builder(self) -> BuilderBase | CompositeBuilder:
-        """Creates and returns the synth builder. Runs a *generic* yosys
-        synthesis pass (no FPGA tech mapping) so the JSON netlist contains
-        only yosys's documented internal cell types ($and, $mux, $dff,
-        ...), which apio/pico/codegen.py knows how to translate to C."""
+        """Creates a CXXRTL model of the selected top-level module."""
 
         apio_env = self.apio_env
         params = apio_env.params
 
-        # -- Note: read_verilog must be called explicitly inside the -p
-        # -- script, ahead of the other passes. Passing $SOURCES as
-        # -- trailing positional args (as the ice40 plugin does for its
-        # -- synth_ice40 pass) does NOT guarantee they're read before -p
-        # -- runs -- confirmed by hand: that ordering silently produced
-        # -- an empty, unsynthesized "$abstract\\main" module.
+        top_module = params.apio_env_params.top_module
         return Builder(
             action=(
-                'yosys -p "read_verilog -sv $SOURCES; proc; flatten; opt; '
-                'write_json $TARGET" {0} -DSYNTHESIZE {1}'
+                'yosys -p "read_verilog -sv $SOURCES; '
+                'prep -top {0} -flatten; write_cxxrtl -O6 -g0 $TARGET" '
+                '{1} -DSYNTHESIZE {2}'
             ).format(
+                top_module,
                 "" if params.verbosity.all or params.verbosity.synth else "-q",
                 get_define_flags(apio_env),
             ),
-            suffix=".json",
+            suffix=".cxxrtl.cc",
             src_suffix=SRC_SUFFIXES,
             source_scanner=self.verilog_src_scanner,
         )
 
     # @overrides
     def pnr_builder(self) -> BuilderBase | CompositeBuilder:
-        """Repurposed as the netlist -> C codegen stage."""
+        """Appends a PCF-driven Pico GPIO wrapper to the CXXRTL model."""
+
+        top_module = self.apio_env.params.apio_env_params.top_module
 
         def codegen_action(target, source, env):
             _ = env
-            json_path = str(source[0])
+            model_path = Path(str(source[0]))
             pcf_path = self.constrain_file()
             try:
-                netlist = parse_yosys_json(json_path)
+                model_source = model_path.read_text(encoding="utf-8")
                 pin_map = parse_pcf(pcf_path)
-                c_src = generate_c(
-                    netlist, pin_map, target="pico", include_main=True
+                firmware_source = generate_firmware(
+                    model_source, pin_map, top_module, target="pico"
                 )
-            except (NetlistError, PcfError) as e:
-                cerror(f"Pico codegen failed: {e}")
+            except (CxxrtlError, PcfError, OSError) as e:
+                cerror(f"Pico CXXRTL wrapper generation failed: {e}")
                 return 1
-            Path(str(target[0])).write_text(c_src, encoding="utf-8")
+            Path(str(target[0])).write_text(
+                firmware_source, encoding="utf-8"
+            )
             return None
 
         return Builder(
             action=Action(
-                codegen_action, "Generating pico C firmware from netlist"
+                codegen_action, "Adding Pico GPIO wrapper to CXXRTL model"
             ),
-            suffix=".c",
-            src_suffix=".json",
+            suffix=".cc",
+            src_suffix=".cxxrtl.cc",
         )
 
     # @overrides
     def bitstream_builder(self) -> BuilderBase | CompositeBuilder:
         """Repurposed as the native compile stage: compiles the generated
-        C against pico-sdk with CMake + arm-none-eabi-gcc, producing a
+        C++ against pico-sdk with CMake + arm-none-eabi-g++, producing a
         .uf2 ready for 'apio upload'.
 
-        Requires the 'arm-none-eabi-gcc', 'cmake', and 'pico-sdk' packages
-        to be installed (apio packages install) and PICO_SDK_PATH set --
-        see apio/pico/runtime.py for the CMake project template used
-        here. This stage is not yet exercised end-to-end against real
-        hardware; see the pico plan doc for outstanding verification.
+        Requires the Pico toolchain packages installed by
+        'apio packages install'; see apio/pico/runtime.py for resolution
+        rules and the CMake project template.
         """
         apio_env = self.apio_env
 
         def compile_action(target, source, env):
             _ = env
-            generated_c = Path(str(source[0]))
+            generated_cpp = Path(str(source[0]))
             uf2_target = Path(str(target[0]))
-            return pico_runtime.build_uf2(generated_c, uf2_target)
+            cxxrtl_runtime_dir = (
+                Path(apio_env.params.environment.yosys_path)
+                / "include"
+                / "backends"
+                / "cxxrtl"
+                / "runtime"
+            )
+            return pico_runtime.build_uf2(
+                generated_cpp, uf2_target, cxxrtl_runtime_dir
+            )
 
         return Builder(
             action=Action(compile_action, "Compiling pico firmware (.uf2)"),
             suffix=".uf2",
-            src_suffix=".c",
+            src_suffix=".cc",
         )

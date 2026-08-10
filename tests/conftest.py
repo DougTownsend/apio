@@ -110,6 +110,7 @@ class ApioSandbox:
         args: List[str],
         terminal_mode: bool = True,
         in_subprocess: bool = False,
+        input_text: str | None = None,
     ) -> ApioResult:
         """Invoke an apio command.  in_subprocess run apios in a subprocess,
         currently this suppresses colors because of the piping."""
@@ -152,6 +153,7 @@ class ApioSandbox:
                 capture_output=True,
                 encoding="utf-8",
                 text=True,
+                input=input_text,
                 check=False,
             )
 
@@ -169,6 +171,7 @@ class ApioSandbox:
                 cli=cli,
                 args=args,
                 color=terminal_mode,
+                input=input_text,
             )
 
             # -- Convert click result to apio result.

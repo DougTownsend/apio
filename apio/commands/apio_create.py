@@ -31,11 +31,35 @@ board_option = click.option(
     "-b",
     "--board",
     type=str,
-    required=True,
+    required=False,
     metavar="BOARD",
-    help="Set the board.",
+    help=(
+        "Set the board. If omitted, choose Pico or UPduino 3.1 "
+        "interactively."
+    ),
     cls=cmd_util.ApioOption,
 )
+
+
+CLASS_BOARD_CHOICES = {
+    "1": ("pico", "Raspberry Pi Pico"),
+    "2": ("upduino31", "UPduino 3.1"),
+}
+
+
+def _prompt_for_board() -> str:
+    """Prompt for one of the two boards used by the class."""
+
+    click.echo("Select a board:")
+    for number, (_, label) in CLASS_BOARD_CHOICES.items():
+        click.echo(f"  {number}. {label}")
+    selection = click.prompt(
+        "Board",
+        type=click.Choice(tuple(CLASS_BOARD_CHOICES), case_sensitive=True),
+        show_choices=False,
+    )
+    return CLASS_BOARD_CHOICES[selection][0]
+
 
 # -------------- apio create
 
@@ -45,8 +69,9 @@ The command 'apio create' creates a new 'apio.ini' project file and is \
 typically used when setting up a new Apio project.
 
 Examples:[code]
-  apio create --board alhambra-ii
-  apio create --board alhambra-ii --top-module MyModule[/code]
+  apio create
+  apio create --board pico
+  apio create --board upduino31 --top-module MyModule[/code]
 
 [b][NOTE][/b] This command only creates a new 'apio.ini' file, rather than a \
 complete and buildable project. To create complete projects, refer to the \
@@ -68,14 +93,14 @@ def cli(
     _: click.Context,
     *,
     # Options
-    board: str,
+    board: Optional[str],
     top_module: str,
     project_dir: Optional[Path],
 ):
     """Create a project file."""
 
-    # Board is annotated above as required so must exist.
-    assert board is not None
+    if board is None:
+        board = _prompt_for_board()
 
     if not top_module:
         top_module = DEFAULT_TOP_MODULE
@@ -87,7 +112,7 @@ def cli(
         packages_policy=PackagesPolicy.ENSURE_PACKAGES,
     )
 
-    # -- Make sure the board exist.
+    # -- Make sure the board exists.
     if board not in apio_ctx.boards:
         cerror(f"Unknown board id '{board}'.")
         sys.exit(1)

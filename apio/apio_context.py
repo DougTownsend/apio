@@ -33,6 +33,7 @@ from apio.utils.resource_util import (
 
 # ---------- RESOURCES
 RESOURCES_DIR = "resources"
+BUILTIN_DEFINITIONS_DIR = "definitions"
 
 
 # ---------------------------------------
@@ -311,17 +312,27 @@ class ApioContext:
             # -- the one command that may reach the network.
             packages.verify_required_packages(self.packages_context)
 
-            # -- Load the definitions from the definitions file with possible
-            # -- override by the optional project file.
+            # -- Load upstream package definitions, then this distribution's
+            # -- built-in additions, then optional project overrides.
             definitions_dir = self.apio_packages_dir / "definitions"
+            builtin_definitions_dir = resources_dir / BUILTIN_DEFINITIONS_DIR
             boards = self._load_resource(
-                BOARDS_JSONC, definitions_dir, self._project_dir
+                BOARDS_JSONC,
+                definitions_dir,
+                self._project_dir,
+                builtin_definitions_dir,
             )
             fpgas = self._load_resource(
-                FPGAS_JSONC, definitions_dir, self._project_dir
+                FPGAS_JSONC,
+                definitions_dir,
+                self._project_dir,
+                builtin_definitions_dir,
             )
             programmers = self._load_resource(
-                PROGRAMMERS_JSONC, definitions_dir, self._project_dir
+                PROGRAMMERS_JSONC,
+                definitions_dir,
+                self._project_dir,
+                builtin_definitions_dir,
             )
             self._definitions = ApioDefinitions(boards, fpgas, programmers)
 
@@ -427,16 +438,29 @@ class ApioContext:
         return env_build_path(self.project.env_name)
 
     def _load_resource(
-        self, name: str, standard_dir: Path, custom_dir: Optional[Path] = None
+        self,
+        name: str,
+        standard_dir: Path,
+        custom_dir: Optional[Path] = None,
+        builtin_override_dir: Optional[Path] = None,
     ) -> dict:
-        """Load a jsonc file. Try first from custom_dir, if given, and then
-        from standard dir. This method is called for resource files in
-        apio/resources and definitions files in the definitions packages.
+        """Load and layer a JSONC resource.
+
+        The standard resource is loaded first. A bundled override is applied
+        next when provided, followed by a project-local override. This keeps
+        project definitions at the highest precedence.
         """
 
         # -- Load the standard definition as a json dict.
         filepath = standard_dir / name
         result = self._load_resource_file(filepath)
+
+        # -- Apply definitions bundled with this Apio distribution. These
+        # -- extend the separately installed upstream definitions package.
+        if builtin_override_dir:
+            filepath = builtin_override_dir / name
+            if filepath.exists():
+                result.update(self._load_resource_file(filepath))
 
         # -- If there is a project specific override file, apply it on
         # -- top of the standard apio definition dict.
