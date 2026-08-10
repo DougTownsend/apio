@@ -3,6 +3,8 @@
 Instructions below use `apt` (Debian, Ubuntu, Linux Mint, Pop!_OS). For other
 distributions, see [Other distributions](#other-distributions).
 
+> **If you have installed apio before**, uninstall it first. If you have an old version installed elsewhere, it may take precedence over the version we're installing here, causing confusing errors. Check with `which apio` to see if an older version exists, and uninstall it before proceeding.
+
 ---
 
 ## 1. Install Git, Python and pipx
@@ -20,10 +22,11 @@ release provides. Check with:
 python3 --version
 ```
 
-`pipx ensurepath` adds `~/.local/bin` to your `PATH`. **Close the terminal and
-open a new one** so the change takes effect.
+## 2. Close and reopen the terminal
 
-## 2. Clone and install apio
+**Close this terminal and open a new one.** The `pipx ensurepath` command adds `~/.local/bin` to your `PATH`, and this change only takes effect in a new shell.
+
+## 3. Clone and install apio
 
 ```bash
 cd ~
@@ -46,7 +49,7 @@ git pull origin main
 pipx install --force .
 ```
 
-## 3. Install the toolchain
+## 4. Install the toolchain
 
 Unlike upstream apio, this fork never downloads packages on its own. Fetch them
 once, explicitly:
@@ -59,7 +62,7 @@ This pulls yosys, the ARM compiler, CMake, Ninja, the Pico SDK and TinyUSB.
 It is a large download and takes several minutes. Re-run it after any
 `git pull` that changes the package definitions.
 
-## 4. Check it works
+## 5. Check it works
 
 ```bash
 cd ~/apio/experimental/pico-hello
@@ -70,7 +73,7 @@ A successful build ends with `[SUCCESS]`.
 
 ---
 
-## 5. Allow access to the Pico
+## 6. Allow access to the Pico
 
 By default Linux only lets root talk to USB serial devices, so this step is
 needed before `apio upload` can reboot a board that is already running your
@@ -103,7 +106,7 @@ work.
 
 ---
 
-## Connecting a Pico
+## 7. Connecting a Pico
 
 **The first time you flash a particular board**, hold the BOOTSEL button while
 plugging in the USB cable, then run:
@@ -122,7 +125,7 @@ leave the button alone.
 
 ---
 
-## Other distributions
+## 8. Other distributions
 
 Install the same three things — `git`, Python 3.10+, and `pipx` — with your own
 package manager, then follow from step 2.
@@ -144,7 +147,7 @@ python3 -m pipx ensurepath
 
 ---
 
-## Troubleshooting
+## 9. Troubleshooting
 
 ### `apio: command not found` right after installing
 

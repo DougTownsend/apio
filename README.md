@@ -1,7 +1,7 @@
 > **Status**, all against real hardware:
 >
 > - **Linux** — fully tested. Build, flash, and remote reboot-to-bootloader all confirmed working.
-> - **Windows** — build and flash confirmed working. The remote reboot-to-bootloader has *not* been verified yet, so assume BOOTSEL must be held for every upload until that's confirmed. (It was tested in a VM, where the board's serial interface doesn't pass through; this is a limitation of the test setup, not a known defect.)
+> - **Windows** — fully tested. Build, flash, and remote reboot-to-bootloader all confirmed working.
 > - **macOS** — fully tested. Build, flash, and remote reboot-to-bootloader all confirmed working, on Apple silicon. No driver or permission setup is needed for any of it.
 
 ## Installation

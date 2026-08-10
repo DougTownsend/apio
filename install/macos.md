@@ -1,17 +1,43 @@
 # Installing apio on macOS
 
-> **Verified on hardware.** These steps have been walked through end to end on
-> Apple silicon: install, build, first flash from BOOTSEL, and hands-off
-> uploads after that.
-
 Everything here is done from **Terminal** with [Homebrew](https://brew.sh),
 the standard macOS package manager. Nothing needs downloading by hand.
 
-If you do not already have Homebrew, install it with the one command from
-[brew.sh](https://brew.sh), then follow its instructions to add `brew` to your
-`PATH`.
+> **If you have installed apio before**, uninstall it first. If you have an old version installed elsewhere, it may take precedence over the version we're installing here, causing confusing errors. Check with `which apio` to see if an older version exists, and uninstall it before proceeding.
 
-Check it:
+---
+
+## 1. Install Homebrew
+
+Run this command in Terminal:
+
+```bash
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+```
+
+This may take a few minutes. When it finishes, it will print instructions.
+
+## 2. Add Homebrew to your PATH
+
+After Homebrew finishes installing, it prints instructions on how to add `brew` to your `PATH`. **You must do this step or `brew` commands will not work.**
+
+**For Apple Silicon Macs**, add this line to your shell profile. Run:
+
+```bash
+echo 'eval "$(/opt/homebrew/bin/brew shellenv)"' >> ~/.zprofile
+```
+
+**For Intel Macs**, add this line instead:
+
+```bash
+echo 'eval "$(/usr/local/bin/brew shellenv)"' >> ~/.zprofile
+```
+
+## 3. Close and reopen Terminal
+
+**Close Terminal and open a new window.** The changes to your shell profile only take effect in a new shell.
+
+Verify Homebrew is working:
 
 ```bash
 brew --version
@@ -19,7 +45,7 @@ brew --version
 
 ---
 
-## 1. Install Git, Python and pipx
+## 4. Install Git, Python and pipx
 
 ```bash
 brew install git python pipx
@@ -33,10 +59,11 @@ Check with:
 python3 --version
 ```
 
-`pipx ensurepath` updates your shell profile. **Close Terminal and open a new
-window** so the change takes effect.
+## 5. Close and reopen Terminal again
 
-## 2. Clone and install apio
+**Close Terminal and open a new window.** The `pipx ensurepath` command updates your shell profile, and this change only takes effect in a new shell.
+
+## 6. Clone and install apio
 
 ```bash
 cd ~
@@ -59,7 +86,7 @@ git pull origin main
 pipx install --force .
 ```
 
-## 3. Install the toolchain
+## 7. Install the toolchain
 
 Unlike upstream apio, this fork never downloads packages on its own. Fetch them
 once, explicitly:
@@ -72,7 +99,7 @@ This pulls yosys, the ARM compiler, CMake, Ninja, the Pico SDK and TinyUSB.
 It is a large download and takes several minutes. Re-run it after any
 `git pull` that changes the package definitions.
 
-## 4. Check it works
+## 8. Check it works
 
 ```bash
 cd ~/apio/experimental/pico-hello
@@ -83,7 +110,7 @@ A successful build ends with `[SUCCESS]`.
 
 ---
 
-## Connecting a Pico
+## 9. Connecting a Pico
 
 No drivers or permission changes should be needed. macOS recognises both states
 of the board on its own: a serial port when it is running your firmware, and a
@@ -106,7 +133,7 @@ leave the button alone.
 
 ---
 
-## Troubleshooting
+## 10. Troubleshooting
 
 ### `apio: command not found` right after installing
 

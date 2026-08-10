@@ -12,6 +12,8 @@ winget --version
 If that fails, install "App Installer" from the Microsoft Store, which
 provides it.
 
+> **If you have installed apio before**, uninstall it first. If you have an old version installed elsewhere (like from the official installer), it may take precedence over the version we're installing here, causing confusing errors. Check with `where apio` to see if an older version exists, and uninstall it from Control Panel → Programs → Uninstall a program if you find one.
+
 ---
 
 ## 1. Install Git and Python
@@ -24,9 +26,9 @@ winget install --id Python.Python.3.13 --source winget --accept-package-agreemen
 apio needs Python 3.10 or newer. Python installs per-user under
 `%LOCALAPPDATA%\Programs\Python\Python313`.
 
-> **Close this PowerShell window and open a new one before continuing.**
-> Installers write `PATH` into the registry, and an already-running shell does
-> not pick that up. You will need a fresh window after each install step below.
+## 2. Close and reopen PowerShell
+
+**Close this PowerShell window and open a new one.** Installers write `PATH` into the registry, and an already-running shell does not pick that up.
 
 Check that Python is working:
 
@@ -37,7 +39,7 @@ python --version
 This should print `Python 3.13.x`. If it instead opens the Microsoft Store, see
 [`python` opens the Store](#python-opens-the-microsoft-store) below.
 
-## 2. Install pipx
+## 3. Install pipx
 
 pipx is not available through winget, so it comes from pip:
 
@@ -46,13 +48,15 @@ python -m pip install --user pipx
 python -m pipx ensurepath
 ```
 
-Open a new PowerShell window, then check:
+## 4. Close and reopen PowerShell again
+
+**Close this PowerShell window and open a new one.** Then check:
 
 ```powershell
 pipx --version
 ```
 
-## 3. Clone and install apio
+## 5. Clone and install apio
 
 ```powershell
 cd $HOME
@@ -61,7 +65,9 @@ cd apio
 pipx install --force .
 ```
 
-Open a new PowerShell window, then check:
+## 6. Close and reopen PowerShell once more
+
+**Close this PowerShell window and open a new one.** Then check:
 
 ```powershell
 apio --version
@@ -75,7 +81,7 @@ git pull origin main
 pipx install --force .
 ```
 
-## 4. Install the toolchain
+## 7. Install the toolchain
 
 Unlike upstream apio, this fork never downloads packages on its own. Fetch them
 once, explicitly:
@@ -88,7 +94,7 @@ This pulls yosys, the ARM compiler, CMake, Ninja, the Pico SDK and TinyUSB.
 It is a large download and takes several minutes. Re-run it after any
 `git pull` that changes the package definitions.
 
-## 5. Check it works
+## 8. Check it works
 
 ```powershell
 cd $HOME\apio\experimental\pico-hello
@@ -99,23 +105,19 @@ A successful build ends with `[SUCCESS]`.
 
 ---
 
-## Connecting a Pico
+## 9. Connecting a Pico
 
 No drivers are needed. Windows recognises both states of the board on its own:
 a serial port when it is running your firmware, and a removable drive labelled
 `RPI-RP2` when it is in its bootloader.
 
-**Hold the BOOTSEL button while plugging in the USB cable**, then run:
+**The first time you flash a particular board**, hold the BOOTSEL button while plugging in the USB cable, then run:
 
 ```powershell
 apio upload
 ```
 
-On Linux, only the *first* flash of a board needs that button press — after
-which apio reboots the board into its bootloader by itself. That hands-off
-behaviour has not yet been confirmed on Windows, so for now expect to hold
-BOOTSEL each time. If you find it works without, that is the intended
-behaviour and worth reporting.
+After that first flash, `apio upload` handles the reboot itself and you can leave the button alone.
 
 > If uploading does nothing, check the cable. Many USB cables sold with
 > phones and battery packs carry power only, with no data wires, and a Pico on
@@ -124,7 +126,7 @@ behaviour and worth reporting.
 
 ---
 
-## Troubleshooting
+## 10. Troubleshooting
 
 ### `python` opens the Microsoft Store
 
