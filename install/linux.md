@@ -75,18 +75,17 @@ A successful build ends with `[SUCCESS]`.
 
 ## 6. Allow access to the Pico
 
-By default Linux only lets root talk to USB serial devices, so this step is
-needed before `apio upload` can reboot a board that is already running your
-firmware. Install the rules file included in the repo:
+By default Linux restricts direct access to USB devices, so this step is needed
+before `apio upload` can use `picotool` to reboot and flash a connected board.
+Add your account to the `plugdev` group and install the rules file included in
+the repo:
 
 ```bash
+sudo usermod -aG plugdev "$USER"
 sudo cp ~/apio/scripts/99-apio-pico.rules /etc/udev/rules.d/
 sudo udevadm control --reload-rules
 sudo udevadm trigger
 ```
-
-Then unplug and replug the board. No logout is needed — the rules grant access
-to whoever is logged in at the machine.
 
 <details>
 <summary>Alternative: add yourself to the <code>dialout</code> group</summary>
@@ -106,7 +105,17 @@ work.
 
 ---
 
-## 7. Connecting a Pico
+## 7. Log out and back in
+
+**Log out of your Linux account completely, then log back in.** Closing and
+reopening the terminal is not enough. This step activates the new `plugdev`
+group membership.
+
+After logging back in, unplug and replug the board.
+
+---
+
+## 8. Connecting a Pico
 
 **The first time you flash a particular board**, hold the BOOTSEL button while
 plugging in the USB cable, then run:
@@ -125,7 +134,17 @@ leave the button alone.
 
 ---
 
-## 8. Other distributions
+## 9. Connecting an UPduino3.1
+
+Plug the UPduino3.1 FPGA board into the computer, then install its FTDI driver:
+
+```bash
+apio drivers install ftdi
+```
+
+---
+
+## 10. Other distributions
 
 Install the same three things — `git`, Python 3.10+, and `pipx` — with your own
 package manager, then follow from step 2.
@@ -147,7 +166,7 @@ python3 -m pipx ensurepath
 
 ---
 
-## 9. Troubleshooting
+## 11. Troubleshooting
 
 ### `apio: command not found` right after installing
 
@@ -166,7 +185,7 @@ Work through these in order:
 
 1. Confirm the board is connected: `lsusb | grep 2e8a` should list a device.
    Nothing there usually means a power-only USB cable.
-2. If you have not done step 5, do it and replug the board.
+2. If you have not done step 6, do it and replug the board.
 3. For a board that has never been flashed, hold BOOTSEL while plugging it in.
 
 ### apio upload mentions picotool and permissions

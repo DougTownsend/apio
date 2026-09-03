@@ -133,7 +133,17 @@ leave the button alone.
 
 ---
 
-## 10. Troubleshooting
+## 10. Connecting an UPduino3.1
+
+Plug the UPduino3.1 FPGA board into the computer, then install its FTDI driver:
+
+```bash
+apio drivers install ftdi
+```
+
+---
+
+## 11. Troubleshooting
 
 ### `apio: command not found` right after installing
 

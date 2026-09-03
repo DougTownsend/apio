@@ -126,7 +126,23 @@ After that first flash, `apio upload` handles the reboot itself and you can leav
 
 ---
 
-## 10. Troubleshooting
+## 10. Connecting an UPduino3.1
+
+Plug the UPduino3.1 FPGA board into the computer, then run:
+
+```powershell
+apio drivers install ftdi
+```
+
+This opens Zadig. Select the UPduino3.1 (interface 0) and WinUSB, then click
+**Replace Driver** to install the driver.
+
+**Before replacing the driver, make absolutely sure the UPduino3.1 is selected
+in Zadig's dropdown menu.**
+
+---
+
+## 11. Troubleshooting
 
 ### `python` opens the Microsoft Store
 
