@@ -34,8 +34,8 @@ board_option = click.option(
     required=False,
     metavar="BOARD",
     help=(
-        "Set the board. If omitted, choose Pico or UPduino 3.1 "
-        "interactively."
+        "Set the board. If omitted, choose Pico, UPduino 3.1, or "
+        "UPduino 3.0 interactively."
     ),
     cls=cmd_util.ApioOption,
 )
@@ -44,11 +44,12 @@ board_option = click.option(
 CLASS_BOARD_CHOICES = {
     "1": ("pico", "Raspberry Pi Pico"),
     "2": ("upduino31", "UPduino 3.1"),
+    "3": ("upduino3", "UPduino 3.0"),
 }
 
 
 def _prompt_for_board() -> str:
-    """Prompt for one of the two boards used by the class."""
+    """Prompt for one of the boards used by the class."""
 
     click.echo("Select a board:")
     for number, (_, label) in CLASS_BOARD_CHOICES.items():

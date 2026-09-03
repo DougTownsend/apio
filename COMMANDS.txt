@@ -426,8 +426,8 @@ Usage: apio create [OPTIONS]
   the 'apio examples' command.
 
 Options:
-  -b, --board BOARD       Set the board. If omitted, choose Pico or UPduino
-                          3.1 interactively.
+  -b, --board BOARD       Set the board. If omitted, choose Pico, UPduino 3.1,
+                          or UPduino 3.0 interactively.
   -t, --top-module name   Set the top level module name.
   -p, --project-dir path  Set the root directory for the project.
   -h, --help              Show this message and exit.

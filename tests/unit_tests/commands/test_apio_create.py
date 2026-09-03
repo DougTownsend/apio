@@ -32,6 +32,7 @@ def test_create(apio_runner: ApioRunner):
         sb.assert_result_ok(result)
         assert "1. Raspberry Pi Pico" in result.output
         assert "2. UPduino 3.1" in result.output
+        assert "3. UPduino 3.0" in result.output
         _check_ini_file(apio_ini, {"board": "pico", "top-module": "main"})
 
         # -- Select UPduino 3.1 from the same prompt.
@@ -44,6 +45,18 @@ def test_create(apio_runner: ApioRunner):
         _check_ini_file(
             Path("upduino-project") / apio_ini,
             {"board": "upduino31", "top-module": "main"},
+        )
+
+        # -- Select UPduino 3.0 from the same prompt.
+        result = sb.invoke_apio_cmd(
+            apio,
+            ["create", "--project-dir", "upduino3-project"],
+            input_text="3\n",
+        )
+        sb.assert_result_ok(result)
+        _check_ini_file(
+            Path("upduino3-project") / apio_ini,
+            {"board": "upduino3", "top-module": "main"},
         )
 
         # -- An explicit Pico board works without project-local definitions.
