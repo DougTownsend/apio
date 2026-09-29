@@ -10,5 +10,13 @@
     // -- Deliberately no "usb" section. A Pico has separate USB identities
     // -- for its running firmware and BOOTSEL bootloader. The Pico uploader
     // -- detects both modes directly and can report which one it found.
+  },
+  "pico2": {
+    "description": "Raspberry Pi Pico 2 — RP2350-based board running Apio's software Verilog interpreter",
+    "fpga-id": "rp2350",
+    "programmer": {
+      "id": "pico2"
+    }
+    // -- No "usb" section, for the same reason as "pico" above.
   }
 }

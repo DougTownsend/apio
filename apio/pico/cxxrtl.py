@@ -2,12 +2,16 @@
 
 import re
 from dataclasses import dataclass
-from typing import Dict, List
+from typing import Callable, Dict, List, Optional, Tuple
 
 
 # -- A PCF pin number meaning that no physical GPIO is attached. On Pico it
 # -- is driven by a 1 kHz timer; in host tests it toggles once per step.
 INTERNAL_PIN = -1
+
+# -- The highest GPIO number on the RP2040, and on the RP2350A used by the
+# -- Pico 2. Overridden per chip by the "max-gpio" fpga param.
+DEFAULT_MAX_GPIO = 29
 
 _PORT_RE = re.compile(
     r"/\*(input|output|inout)\*/\s+(value|wire)<(\d+)>\s+"
@@ -58,9 +62,7 @@ def _decode_cxxrtl_name(cxx_name: str) -> str:
             continue
         end = encoded.find("_", index + 1)
         if end < 0:
-            raise CxxrtlError(
-                f"cannot decode CXXRTL port name {cxx_name!r}"
-            )
+            raise CxxrtlError(f"cannot decode CXXRTL port name {cxx_name!r}")
         try:
             result.append(chr(int(encoded[index + 1 : end], 16)))
         except ValueError as exc:
@@ -118,9 +120,16 @@ def parse_model_ports(model_source: str, top_module: str) -> List[Port]:
 
 
 def resolve_ports(
-    ports: List[Port], pin_map: Dict[str, int]
-) -> List[ResolvedPort]:
-    """Resolve and validate one PCF pin for every top-level port bit."""
+    ports: List[Port],
+    pin_map: Dict[str, int],
+    max_gpio: int = DEFAULT_MAX_GPIO,
+) -> Tuple[List[ResolvedPort], List[str]]:
+    """Resolve and validate one PCF pin for every top-level port bit.
+
+    Returns the resolved ports and the sorted names of PCF entries that
+    match no top-level port bit. Those are not an error, matching
+    nextpnr-ice40, which only warns about an unmatched constraint -- so a
+    .pcf can carry pins a particular design doesn't use."""
 
     resolved: List[ResolvedPort] = []
     expected_keys = set()
@@ -144,11 +153,11 @@ def resolve_ports(
                 )
             pin = pin_map[key]
             if pin != INTERNAL_PIN:
-                if not 0 <= pin <= 29:
+                if not 0 <= pin <= max_gpio:
                     raise CxxrtlError(
-                        f"pin mapping for {key!r} is {pin}; RP2040 GPIO "
-                        "numbers must be 0 through 29, or -1 for an "
-                        "internal signal"
+                        f"pin mapping for {key!r} is {pin}; GPIO "
+                        f"numbers must be 0 through {max_gpio}, or -1 for "
+                        "an internal signal"
                     )
                 previous = physical_pins.get(pin)
                 if previous is not None:
@@ -160,13 +169,8 @@ def resolve_ports(
             pins.append(pin)
         resolved.append(ResolvedPort(port=port, pins=pins))
 
-    unexpected = sorted(set(pin_map) - expected_keys)
-    if unexpected:
-        raise CxxrtlError(
-            "PCF contains mappings for unknown top-level ports: "
-            + ", ".join(repr(name) for name in unexpected)
-        )
-    return resolved
+    unused = sorted(set(pin_map) - expected_keys)
+    return resolved, unused
 
 
 def _gpio_init_lines(ports: List[ResolvedPort]) -> List[str]:
@@ -306,13 +310,27 @@ def generate_firmware(
     top_module: str,
     *,
     target: str = "pico",
+    max_gpio: int = DEFAULT_MAX_GPIO,
+    warn: Optional[Callable[[str], None]] = None,
 ) -> str:
-    """Append a PCF-driven Pico or host wrapper to a CXXRTL model."""
+    """Append a PCF-driven Pico or host wrapper to a CXXRTL model.
+
+    `warn`, if given, is called with a message for each PCF entry that
+    matches no top-level port. Such entries are otherwise ignored."""
 
     if target not in ("pico", "host"):
         raise ValueError(f"unknown target {target!r}")
 
-    ports = resolve_ports(parse_model_ports(model_source, top_module), pin_map)
+    ports, unused = resolve_ports(
+        parse_model_ports(model_source, top_module), pin_map, max_gpio
+    )
+    if warn:
+        for name in unused:
+            warn(
+                f"PCF constraint for {name!r} (pin {pin_map[name]}) does "
+                f"not match any top-level port of {top_module!r}; "
+                "ignoring it"
+            )
     uses_internal_pin = any(
         pin == INTERNAL_PIN
         for resolved in ports

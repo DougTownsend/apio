@@ -30,16 +30,29 @@ def test_create(apio_runner: ApioRunner):
         # -- Execute bare "apio create" and select Pico.
         result = sb.invoke_apio_cmd(apio, ["create"], input_text="1\n")
         sb.assert_result_ok(result)
-        assert "1. Raspberry Pi Pico" in result.output
-        assert "2. UPduino 3.1" in result.output
-        assert "3. UPduino 3.0" in result.output
+        assert "1. Raspberry Pi Pico\n" in result.output
+        assert "2. Raspberry Pi Pico 2" in result.output
+        assert "3. UPduino 3.1" in result.output
+        assert "4. UPduino 3.0" in result.output
         _check_ini_file(apio_ini, {"board": "pico", "top-module": "main"})
+
+        # -- Select Pico 2 from the same prompt.
+        result = sb.invoke_apio_cmd(
+            apio,
+            ["create", "--project-dir", "pico2-project"],
+            input_text="2\n",
+        )
+        sb.assert_result_ok(result)
+        _check_ini_file(
+            Path("pico2-project") / apio_ini,
+            {"board": "pico2", "top-module": "main"},
+        )
 
         # -- Select UPduino 3.1 from the same prompt.
         result = sb.invoke_apio_cmd(
             apio,
             ["create", "--project-dir", "upduino-project"],
-            input_text="2\n",
+            input_text="3\n",
         )
         sb.assert_result_ok(result)
         _check_ini_file(
@@ -51,7 +64,7 @@ def test_create(apio_runner: ApioRunner):
         result = sb.invoke_apio_cmd(
             apio,
             ["create", "--project-dir", "upduino3-project"],
-            input_text="3\n",
+            input_text="4\n",
         )
         sb.assert_result_ok(result)
         _check_ini_file(
@@ -67,6 +80,16 @@ def test_create(apio_runner: ApioRunner):
         _check_ini_file(
             Path("pico-project") / apio_ini,
             {"board": "pico", "top-module": "main"},
+        )
+
+        # -- An explicit Pico 2 board works too.
+        result = sb.invoke_apio_cmd(
+            apio, ["create", "--board", "pico2", "-p", "pico2-explicit"]
+        )
+        sb.assert_result_ok(result)
+        _check_ini_file(
+            Path("pico2-explicit") / apio_ini,
+            {"board": "pico2", "top-module": "main"},
         )
 
         # -- Execute "apio create --board no-such-board"

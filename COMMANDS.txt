@@ -419,6 +419,7 @@ Usage: apio create [OPTIONS]
   Examples:
     apio create
     apio create --board pico
+    apio create --board pico2
     apio create --board upduino31 --top-module MyModule
 
   [NOTE] This command only creates a new 'apio.ini' file, rather than a
@@ -426,8 +427,8 @@ Usage: apio create [OPTIONS]
   the 'apio examples' command.
 
 Options:
-  -b, --board BOARD       Set the board. If omitted, choose Pico, UPduino 3.1,
-                          or UPduino 3.0 interactively.
+  -b, --board BOARD       Set the board. If omitted, choose Pico, Pico 2,
+                          UPduino 3.1, or UPduino 3.0 interactively.
   -t, --top-module name   Set the top level module name.
   -p, --project-dir path  Set the root directory for the project.
   -h, --help              Show this message and exit.

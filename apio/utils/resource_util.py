@@ -114,14 +114,30 @@ FPGA_SCHEMA = schema = {
             "required": ["family", "yosys-arch", "package", "speed"],
             "additionalProperties": False,
         },
+        # -- All optional; missing values default to the RP2040 Pico. See
+        # -- PICO_PARAMS_DEFAULTS.
         "pico-params": {
             "type": "object",
-            "properties": {},
+            "properties": {
+                "pico-board": {"type": "string"},
+                "pico-platform": {"type": "string"},
+                "max-gpio": {"type": "string", "pattern": "^[0-9]+$"},
+            },
             "additionalProperties": False,
         },
     },
     "required": ["part-num", "arch", "size"],
     "additionalProperties": False,
+}
+
+
+# -- Defaults for omitted "pico-params" fields. They match the original
+# -- RP2040 Pico, so project-local fpgas.jsonc files written before these
+# -- fields existed (with an empty "pico-params") keep working.
+PICO_PARAMS_DEFAULTS = {
+    "pico-board": "pico",
+    "pico-platform": "rp2040",
+    "max-gpio": "29",
 }
 
 

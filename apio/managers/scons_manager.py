@@ -21,6 +21,7 @@ from apio.common.apio_styles import SUCCESS, ERROR, EMPH3, INFO
 from apio.utils import util
 from apio.apio_context import ApioContext
 from apio.managers.scons_filter import SconsFilter
+from apio.utils.resource_util import PICO_PARAMS_DEFAULTS
 from apio.common.proto.apio_pb2 import (
     FORCE_PIPE,
     FORCE_TERMINAL,
@@ -201,6 +202,8 @@ class SConsManager:
         """Populate and return the SconsParam proto to pass to the scons
         process."""
 
+        # pylint: disable=too-many-statements
+
         # -- Create a shortcut.
         apio_ctx = self.apio_ctx
 
@@ -277,8 +280,15 @@ class SConsManager:
                 )
             )
         elif fpga_arch == "pico":
+            params = {**PICO_PARAMS_DEFAULTS, **fpga_info["pico-params"]}
             result.arch = ApioArch.PICO
-            result.fpga_info.pico_params.MergeFrom(PicoFpgaParams())
+            result.fpga_info.pico_params.MergeFrom(
+                PicoFpgaParams(
+                    pico_board=params["pico-board"],
+                    pico_platform=params["pico-platform"],
+                    max_gpio=int(params["max-gpio"]),
+                )
+            )
         else:
             cerror(f"Unexpected fpga_arch value {fpga_arch}")
             sys.exit(1)

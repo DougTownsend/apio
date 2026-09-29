@@ -65,10 +65,16 @@ message XilinxFpgaParams {
   required string speed = 4;
 }
 
-// Pico (RP2040) specific attributes. Not really an "fpga", but reuses the
-// fpga_info/arch dispatch mechanism to fit apio's existing pipeline.
+// Pico (RP2040/RP2350) specific attributes. Not really an "fpga", but reuses
+// the fpga_info/arch dispatch mechanism to fit apio's existing pipeline.
 // Matches definition file fpgas.jsonc.
 message PicoFpgaParams {
+  // The pico-sdk PICO_BOARD value, e.g. "pico" or "pico2".
+  required string pico_board = 1;
+  // The pico-sdk PICO_PLATFORM value, e.g. "rp2040" or "rp2350-arm-s".
+  required string pico_platform = 2;
+  // The highest usable GPIO number.
+  required int32 max_gpio = 3;
 }
 
 

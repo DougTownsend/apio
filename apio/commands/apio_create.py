@@ -34,8 +34,8 @@ board_option = click.option(
     required=False,
     metavar="BOARD",
     help=(
-        "Set the board. If omitted, choose Pico, UPduino 3.1, or "
-        "UPduino 3.0 interactively."
+        "Set the board. If omitted, choose Pico, Pico 2, UPduino 3.1, "
+        "or UPduino 3.0 interactively."
     ),
     cls=cmd_util.ApioOption,
 )
@@ -43,8 +43,9 @@ board_option = click.option(
 
 CLASS_BOARD_CHOICES = {
     "1": ("pico", "Raspberry Pi Pico"),
-    "2": ("upduino31", "UPduino 3.1"),
-    "3": ("upduino3", "UPduino 3.0"),
+    "2": ("pico2", "Raspberry Pi Pico 2"),
+    "3": ("upduino31", "UPduino 3.1"),
+    "4": ("upduino3", "UPduino 3.0"),
 }
 
 
@@ -72,6 +73,7 @@ typically used when setting up a new Apio project.
 Examples:[code]
   apio create
   apio create --board pico
+  apio create --board pico2
   apio create --board upduino31 --top-module MyModule[/code]
 
 [b][NOTE][/b] This command only creates a new 'apio.ini' file, rather than a \

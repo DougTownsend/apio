@@ -88,8 +88,14 @@ class XilinxFpgaParams(_message.Message):
     def __init__(self, family: _Optional[str] = ..., yosys_arch: _Optional[str] = ..., package: _Optional[str] = ..., speed: _Optional[str] = ...) -> None: ...
 
 class PicoFpgaParams(_message.Message):
-    __slots__ = ()
-    def __init__(self) -> None: ...
+    __slots__ = ("pico_board", "pico_platform", "max_gpio")
+    PICO_BOARD_FIELD_NUMBER: _ClassVar[int]
+    PICO_PLATFORM_FIELD_NUMBER: _ClassVar[int]
+    MAX_GPIO_FIELD_NUMBER: _ClassVar[int]
+    pico_board: str
+    pico_platform: str
+    max_gpio: int
+    def __init__(self, pico_board: _Optional[str] = ..., pico_platform: _Optional[str] = ..., max_gpio: _Optional[int] = ...) -> None: ...
 
 class FpgaInfo(_message.Message):
     __slots__ = ("fpga_id", "part_num", "size", "ice40_params", "ecp5_params", "gowin_params", "xilinx_params", "pico_params")

@@ -15,6 +15,8 @@ from apio.utils import util
 
 _CMAKE_LISTS_TEMPLATE = """\
 cmake_minimum_required(VERSION 3.13)
+set(PICO_PLATFORM {pico_platform})
+set(PICO_BOARD {pico_board})
 include($ENV{{PICO_SDK_PATH}}/pico_sdk_init.cmake)
 project(apio_pico_firmware C CXX ASM)
 set(CMAKE_C_STANDARD 11)
@@ -181,10 +183,16 @@ def build_uf2(
     generated_cpp: Path,
     uf2_target: Path,
     cxxrtl_runtime_dir: Path,
+    pico_board: str = "pico",
+    pico_platform: str = "rp2040",
 ) -> int:
     """Builds `generated_cpp` into a .uf2 at `uf2_target`. Returns 0 on
     success, non-zero (and prints diagnostics) on failure, matching the
-    SCons Action function-action convention."""
+    SCons Action function-action convention.
+
+    `pico_board` and `pico_platform` are the pico-sdk's PICO_BOARD and
+    PICO_PLATFORM, e.g. "pico2" and "rp2350-arm-s" for a Pico 2. They are
+    part of the CMake text, so changing them reconfigures from scratch."""
 
     try:
         _require_tool("cmake")
@@ -202,6 +210,8 @@ def build_uf2(
         build_dir = generated_cpp.parent / "_pico_cmake_build"
         cmake_text = _CMAKE_LISTS_TEMPLATE.format(
             cpp_file_name=generated_cpp.name,
+            pico_board=pico_board,
+            pico_platform=pico_platform,
             cxxrtl_runtime_dir=cxxrtl_runtime_dir.as_posix(),
         )
 
@@ -261,9 +271,7 @@ def build_uf2(
         ]
         if picotool_dir:
             configure_command.append(f"-Dpicotool_DIR={picotool_dir}")
-        configure_command.extend(
-            ["-S", str(build_dir), "-B", str(build_dir)]
-        )
+        configure_command.extend(["-S", str(build_dir), "-B", str(build_dir)])
         subprocess.run(configure_command, check=True)
         stamp_file.write_text(configure_digest + "\n", encoding="utf-8")
         subprocess.run(

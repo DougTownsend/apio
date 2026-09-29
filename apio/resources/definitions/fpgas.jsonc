@@ -1,11 +1,28 @@
 // FPGA definitions provided by this Apio distribution in addition to the
-// separately installed upstream definitions package. RP2040 is a pseudo-FPGA
-// entry used to dispatch builds to the Pico architecture plugin.
+// separately installed upstream definitions package. RP2040 and RP2350 are
+// pseudo-FPGA entries used to dispatch builds to the Pico architecture
+// plugin. Their "pico-params" select the pico-sdk board and platform.
 {
   "rp2040": {
     "part-num": "RP2040",
     "arch": "pico",
     "size": "n/a",
-    "pico-params": {}
+    "pico-params": {
+      "pico-board": "pico",
+      "pico-platform": "rp2040",
+      "max-gpio": "29"
+    }
+  },
+  "rp2350": {
+    "part-num": "RP2350",
+    "arch": "pico",
+    "size": "n/a",
+    "pico-params": {
+      // -- The ARM (Cortex-M33) cores, rather than the RISC-V ones.
+      "pico-board": "pico2",
+      "pico-platform": "rp2350-arm-s",
+      // -- The Pico 2 uses the RP2350A package, which has GPIO 0-29.
+      "max-gpio": "29"
+    }
   }
 }

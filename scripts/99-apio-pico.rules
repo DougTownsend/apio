@@ -8,7 +8,7 @@
 # Without these, 'apio upload' still works but is degraded in two ways:
 #
 #   * picotool can't claim the board's PICOBOOT interface, so every upload
-#     falls back to copying the .uf2 onto the RPI-RP2 mass-storage volume
+#     falls back to copying the .uf2 onto the RPI-RP2 (or RP2350) volume
 #     after printing a "picotool was unable to connect" error. Slower, and
 #     the error looks like a failure even though the upload succeeds.
 #
@@ -26,15 +26,20 @@
 SUBSYSTEM=="usb", ATTRS{idVendor}=="2e8a", ATTRS{idProduct}=="0003", MODE="0660", GROUP="plugdev"
 SUBSYSTEM=="usb", ATTRS{idVendor}=="2e8a", ATTRS{idProduct}=="0003", TAG+="uaccess"
 
-# -- RP2350 in BOOTSEL mode, for boards other than the classic Pico.
+# -- RP2350 (Pico 2) in BOOTSEL mode.
 SUBSYSTEM=="usb", ATTRS{idVendor}=="2e8a", ATTRS{idProduct}=="000f", MODE="0660", GROUP="plugdev"
 SUBSYSTEM=="usb", ATTRS{idVendor}=="2e8a", ATTRS{idProduct}=="000f", TAG+="uaccess"
 
 # -- Board running the apio firmware: raw USB, so picotool can see it too.
+# -- 000a is the pico-sdk's id on the RP2040 and 0009 on the RP2350.
 SUBSYSTEM=="usb", ATTRS{idVendor}=="2e8a", ATTRS{idProduct}=="000a", MODE="0660", GROUP="plugdev"
 SUBSYSTEM=="usb", ATTRS{idVendor}=="2e8a", ATTRS{idProduct}=="000a", TAG+="uaccess"
+SUBSYSTEM=="usb", ATTRS{idVendor}=="2e8a", ATTRS{idProduct}=="0009", MODE="0660", GROUP="plugdev"
+SUBSYSTEM=="usb", ATTRS{idVendor}=="2e8a", ATTRS{idProduct}=="0009", TAG+="uaccess"
 
 # -- Board running the apio firmware: the CDC serial port that
 # -- apio/pico/upload.py writes the 'b' reboot trigger to.
 SUBSYSTEM=="tty", ATTRS{idVendor}=="2e8a", ATTRS{idProduct}=="000a", MODE="0660", GROUP="dialout"
 SUBSYSTEM=="tty", ATTRS{idVendor}=="2e8a", ATTRS{idProduct}=="000a", TAG+="uaccess"
+SUBSYSTEM=="tty", ATTRS{idVendor}=="2e8a", ATTRS{idProduct}=="0009", MODE="0660", GROUP="dialout"
+SUBSYSTEM=="tty", ATTRS{idVendor}=="2e8a", ATTRS{idProduct}=="0009", TAG+="uaccess"

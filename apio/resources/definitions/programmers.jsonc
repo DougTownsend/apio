@@ -1,8 +1,16 @@
 // Programmer definitions provided by this Apio distribution in addition to
 // the separately installed upstream definitions package.
 {
+  // -- --volume and --bootsel-pid are the BOOTSEL bootloader's volume label
+  // -- and USB product id, and --pid the USB product id of the pico-sdk's
+  // -- stdio-over-USB CDC device. All three differ between the RP2040 and
+  // -- the RP2350.
   "pico": {
     "command": "${PYTHON}",
-    "args": "-m apio.pico.upload ${BIN_FILE}"
+    "args": "-m apio.pico.upload --volume RPI-RP2 --bootsel-pid 0003 --pid 000A ${BIN_FILE}"
+  },
+  "pico2": {
+    "command": "${PYTHON}",
+    "args": "-m apio.pico.upload --volume RP2350 --bootsel-pid 000F --pid 0009 ${BIN_FILE}"
   }
 }

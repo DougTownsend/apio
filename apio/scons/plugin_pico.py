@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 # -- This file is part of the Apio project
-"""Apio scons plugin for the pico (Raspberry Pi Pico / RP2040) target.
+"""Apio scons plugin for the pico (Raspberry Pi Pico / Pico 2) target.
 
 Unlike the FPGA architectures (ice40/ecp5/gowin/xilinx), this target does
 not synthesize a bitstream. Yosys's CXXRTL backend turns the design into a
@@ -12,6 +12,14 @@ stages for a different purpose:
   - synth_builder:     Yosys CXXRTL generation   (.v -> .cxxrtl.cc)
   - pnr_builder:       add Pico GPIO wrapper     (.cxxrtl.cc + .pcf -> .cc)
   - bitstream_builder: native compile            (.cc -> .uf2, via pico-sdk)
+
+Simulation ('apio sim' and 'apio test') doesn't depend on the target, so
+it reuses the ice40 plugin's iverilog testbench builder, making a pico
+project simulate exactly like an upduino31 one. 'apio lint' is not
+supported.
+
+The board-specific pico-sdk settings (PICO_BOARD, PICO_PLATFORM) and the
+GPIO range come from the fpga's "pico-params" via fpga_info.pico_params.
 """
 
 from pathlib import Path
@@ -19,10 +27,10 @@ from SCons.Script import Builder
 from SCons.Builder import BuilderBase, CompositeBuilder
 from SCons.Action import Action
 from apio.common.common_util import SRC_SUFFIXES
-from apio.scons.apio_env import ApioEnv
 from apio.scons.plugin_base import PluginBase, ArchPluginInfo
+from apio.scons.plugin_ice40 import PluginIce40
 from apio.scons.plugin_util import get_define_flags
-from apio.common.apio_console import cerror
+from apio.common.apio_console import cerror, cwarning
 from apio.pico.pcf import parse_pcf, PcfError
 from apio.pico.cxxrtl import generate_firmware, CxxrtlError
 from apio.pico import runtime as pico_runtime
@@ -52,7 +60,7 @@ class PluginPico(PluginBase):
             action=(
                 'yosys -p "read_verilog -sv $SOURCES; '
                 'prep -top {0} -flatten; write_cxxrtl -O6 -g0 $TARGET" '
-                '{1} -DSYNTHESIZE {2}'
+                "{1} -DSYNTHESIZE {2}"
             ).format(
                 top_module,
                 "" if params.verbosity.all or params.verbosity.synth else "-q",
@@ -67,7 +75,9 @@ class PluginPico(PluginBase):
     def pnr_builder(self) -> BuilderBase | CompositeBuilder:
         """Appends a PCF-driven Pico GPIO wrapper to the CXXRTL model."""
 
-        top_module = self.apio_env.params.apio_env_params.top_module
+        params = self.apio_env.params
+        top_module = params.apio_env_params.top_module
+        max_gpio = params.fpga_info.pico_params.max_gpio
 
         def codegen_action(target, source, env):
             _ = env
@@ -77,14 +87,17 @@ class PluginPico(PluginBase):
                 model_source = model_path.read_text(encoding="utf-8")
                 pin_map = parse_pcf(pcf_path)
                 firmware_source = generate_firmware(
-                    model_source, pin_map, top_module, target="pico"
+                    model_source,
+                    pin_map,
+                    top_module,
+                    target="pico",
+                    max_gpio=max_gpio,
+                    warn=cwarning,
                 )
             except (CxxrtlError, PcfError, OSError) as e:
                 cerror(f"Pico CXXRTL wrapper generation failed: {e}")
                 return 1
-            Path(str(target[0])).write_text(
-                firmware_source, encoding="utf-8"
-            )
+            Path(str(target[0])).write_text(firmware_source, encoding="utf-8")
             return None
 
         return Builder(
@@ -106,6 +119,7 @@ class PluginPico(PluginBase):
         rules and the CMake project template.
         """
         apio_env = self.apio_env
+        pico_params = apio_env.params.fpga_info.pico_params
 
         def compile_action(target, source, env):
             _ = env
@@ -119,7 +133,11 @@ class PluginPico(PluginBase):
                 / "runtime"
             )
             return pico_runtime.build_uf2(
-                generated_cpp, uf2_target, cxxrtl_runtime_dir
+                generated_cpp,
+                uf2_target,
+                cxxrtl_runtime_dir,
+                pico_board=pico_params.pico_board,
+                pico_platform=pico_params.pico_platform,
             )
 
         return Builder(
@@ -127,3 +145,9 @@ class PluginPico(PluginBase):
             suffix=".uf2",
             src_suffix=".cc",
         )
+
+    # @overrides
+    def testbench_compile_builder(self) -> BuilderBase | CompositeBuilder:
+        """Simulation is target independent, so compile testbenches exactly
+        as for an ice40 board such as upduino31."""
+        return PluginIce40(self.apio_env).testbench_compile_builder()
