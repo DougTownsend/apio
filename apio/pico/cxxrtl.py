@@ -13,6 +13,31 @@ INTERNAL_PIN = -1
 # -- Pico 2. Overridden per chip by the "max-gpio" fpga param.
 DEFAULT_MAX_GPIO = 29
 
+# -- A hidden top-level input added before CXXRTL generation. Every
+# -- flip-flop in the design is rewritten to sample on this one clock, which
+# -- the wrapper pulses once per loop iteration.
+#
+# -- This is needed because CXXRTL evaluates edge detectors at the start of
+# -- eval(), before flip-flops update, so a clock driven by a flip-flop (a
+# -- debounced button, a clock divider) never produces an edge and the
+# -- logic it clocks is silently dead. Yosys's clk2fflogic pass turns each
+# -- clocked flip-flop into $ff cells on an implicit global clock plus
+# -- explicit edge detection on the original clock, which handles any
+# -- number of derived clocks. write_cxxrtl doesn't support $ff, so
+# -- globalize_ffs() turns each one into a $dff clocked by this port.
+GLOBAL_CLOCK = "apio_gclk"
+
+# -- The Yosys scripts that bracket globalize_ffs(): the first produces the
+# -- RTLIL it rewrites, the second turns the result into CXXRTL. Format
+# -- them with sources=, top=, rtlil= and target=.
+YOSYS_TO_RTLIL = (
+    "read_verilog -sv {sources}; prep -top {top} -flatten; clk2fflogic; "
+    f"add -input {GLOBAL_CLOCK} 1; write_rtlil {{rtlil}}"
+)
+YOSYS_TO_CXXRTL = "read_rtlil {rtlil}; write_cxxrtl -O6 -g0 {target}"
+
+_FF_CELL_RE = re.compile(r"^( *)cell \$ff (\S+)\n", flags=re.MULTILINE)
+
 _PORT_RE = re.compile(
     r"/\*(input|output|inout)\*/\s+(value|wire)<(\d+)>\s+"
     r"(p_[A-Za-z0-9_]+);"
@@ -40,6 +65,21 @@ class ResolvedPort:
 
     port: Port
     pins: List[int]
+
+
+def globalize_ffs(rtlil: str) -> str:
+    """Rewrite every $ff cell in clk2fflogic output as a rising-edge $dff
+    clocked by GLOBAL_CLOCK, which the RTLIL must already declare."""
+
+    def to_dff(match: "re.Match[str]") -> str:
+        indent = match.group(1)
+        return (
+            f"{indent}cell $dff {match.group(2)}\n"
+            f"{indent}  parameter \\CLK_POLARITY 1\n"
+            f"{indent}  connect \\CLK \\{GLOBAL_CLOCK}\n"
+        )
+
+    return _FF_CELL_RE.sub(to_dff, rtlil)
 
 
 def _decode_cxxrtl_name(cxx_name: str) -> str:
@@ -224,8 +264,26 @@ def _output_lines(ports: List[ResolvedPort], host: bool) -> List[str]:
     return lines
 
 
+def _step_lines(global_clock: Optional[Port], indent: str) -> List[str]:
+    """Advance the design by one global clock cycle, or by one plain step
+    if the model has no GLOBAL_CLOCK port."""
+
+    if global_clock is None:
+        return [f"{indent}design.step();"]
+    member = f"design.{global_clock.cxx_name}"
+    return [
+        f"{indent}{member}.set<bool>(false);",
+        f"{indent}design.step();",
+        f"{indent}{member}.set<bool>(true);",
+        f"{indent}design.step();",
+    ]
+
+
 def _pico_wrapper(
-    ports: List[ResolvedPort], top_module: str, uses_internal_pin: bool
+    ports: List[ResolvedPort],
+    top_module: str,
+    uses_internal_pin: bool,
+    global_clock: Optional[Port],
 ) -> str:
     struct_name = _cxxrtl_name(top_module)
     init_lines = _gpio_init_lines(ports)
@@ -269,7 +327,7 @@ static bool virtual_clock_isr(struct repeating_timer *timer) {
         "  design.step();",
         "  for (;;) {",
         *input_lines,
-        "    design.step();",
+        *_step_lines(global_clock, "    "),
         *output_lines,
         "    if (getchar_timeout_us(0) == 'b') {",
         "      reset_usb_boot(0, 0);",
@@ -281,7 +339,10 @@ static bool virtual_clock_isr(struct repeating_timer *timer) {
 
 
 def _host_wrapper(
-    ports: List[ResolvedPort], top_module: str, uses_internal_pin: bool
+    ports: List[ResolvedPort],
+    top_module: str,
+    uses_internal_pin: bool,
+    global_clock: Optional[Port],
 ) -> str:
     struct_name = _cxxrtl_name(top_module)
     input_lines = _input_lines(ports, host=True)
@@ -298,7 +359,7 @@ def _host_wrapper(
     if uses_internal_pin:
         body.append("  virtual_pin_state ^= 1;")
     body.extend(input_lines)
-    body.append("  design.step();")
+    body.extend(_step_lines(global_clock, "  "))
     body.extend(output_lines)
     body.extend(["}", ""])
     return "\n".join(body)
@@ -321,8 +382,15 @@ def generate_firmware(
     if target not in ("pico", "host"):
         raise ValueError(f"unknown target {target!r}")
 
+    model_ports = parse_model_ports(model_source, top_module)
+    # -- The global clock is driven by the wrapper, not by a pin.
+    global_clock = next(
+        (port for port in model_ports if port.name == GLOBAL_CLOCK), None
+    )
     ports, unused = resolve_ports(
-        parse_model_ports(model_source, top_module), pin_map, max_gpio
+        [port for port in model_ports if port is not global_clock],
+        pin_map,
+        max_gpio,
     )
     if warn:
         for name in unused:
@@ -338,8 +406,8 @@ def generate_firmware(
         for pin in resolved.pins
     )
     wrapper = (
-        _pico_wrapper(ports, top_module, uses_internal_pin)
+        _pico_wrapper(ports, top_module, uses_internal_pin, global_clock)
         if target == "pico"
-        else _host_wrapper(ports, top_module, uses_internal_pin)
+        else _host_wrapper(ports, top_module, uses_internal_pin, global_clock)
     )
     return model_source.rstrip() + "\n" + wrapper

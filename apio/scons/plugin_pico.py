@@ -9,7 +9,7 @@ C++ model which is wrapped with Pico GPIO access and compiled as firmware.
 apio's build pipeline is hard-wired as synth -> pnr -> bitstream
 (scons_handler.py:_register_common_targets). This plugin reuses those three
 stages for a different purpose:
-  - synth_builder:     Yosys CXXRTL generation   (.v -> .cxxrtl.cc)
+  - synth_builder:     Yosys CXXRTL generation   (.v -> .il -> .cxxrtl.cc)
   - pnr_builder:       add Pico GPIO wrapper     (.cxxrtl.cc + .pcf -> .cc)
   - bitstream_builder: native compile            (.cc -> .uf2, via pico-sdk)
 
@@ -32,7 +32,13 @@ from apio.scons.plugin_ice40 import PluginIce40
 from apio.scons.plugin_util import get_define_flags
 from apio.common.apio_console import cerror, cwarning
 from apio.pico.pcf import parse_pcf, PcfError
-from apio.pico.cxxrtl import generate_firmware, CxxrtlError
+from apio.pico.cxxrtl import (
+    generate_firmware,
+    globalize_ffs,
+    CxxrtlError,
+    YOSYS_TO_CXXRTL,
+    YOSYS_TO_RTLIL,
+)
 from apio.pico import runtime as pico_runtime
 
 
@@ -56,16 +62,35 @@ class PluginPico(PluginBase):
         params = apio_env.params
 
         top_module = params.apio_env_params.top_module
+        quiet = "" if params.verbosity.all or params.verbosity.synth else "-q"
+        # -- An intermediate RTLIL file that globalize_ffs() rewrites
+        # -- between the two Yosys runs. See GLOBAL_CLOCK for why.
+        rtlil = "${TARGET.base}.il"
+
+        def globalize_action(target, source, env):
+            _ = source
+            rtlil_path = Path(env.subst(rtlil, target=target))
+            rtlil_path.write_text(
+                globalize_ffs(rtlil_path.read_text(encoding="utf-8")),
+                encoding="utf-8",
+            )
+            return None
+
         return Builder(
-            action=(
-                'yosys -p "read_verilog -sv $SOURCES; '
-                'prep -top {0} -flatten; write_cxxrtl -O6 -g0 $TARGET" '
-                "{1} -DSYNTHESIZE {2}"
-            ).format(
-                top_module,
-                "" if params.verbosity.all or params.verbosity.synth else "-q",
-                get_define_flags(apio_env),
-            ),
+            action=[
+                'yosys -p "{0}" {1} -DSYNTHESIZE {2}'.format(
+                    YOSYS_TO_RTLIL.format(
+                        sources="$SOURCES", top=top_module, rtlil=rtlil
+                    ),
+                    quiet,
+                    get_define_flags(apio_env),
+                ),
+                Action(globalize_action, "Moving flip-flops to global clock"),
+                'yosys -p "{0}" {1}'.format(
+                    YOSYS_TO_CXXRTL.format(rtlil=rtlil, target="$TARGET"),
+                    quiet,
+                ),
+            ],
             suffix=".cxxrtl.cc",
             src_suffix=SRC_SUFFIXES,
             source_scanner=self.verilog_src_scanner,

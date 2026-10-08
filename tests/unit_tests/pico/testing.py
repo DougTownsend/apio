@@ -11,7 +11,12 @@ from typing import Dict, List, Optional, Tuple
 
 import pytest
 
-from apio.pico.cxxrtl import generate_firmware
+from apio.pico.cxxrtl import (
+    generate_firmware,
+    globalize_ffs,
+    YOSYS_TO_CXXRTL,
+    YOSYS_TO_RTLIL,
+)
 from apio.pico.pcf import parse_pcf
 
 
@@ -93,14 +98,31 @@ def run_case(
     v_path.write_text(verilog_src, encoding="utf-8")
 
     model_path = tmp_path / "model.cc"
+    rtlil_path = tmp_path / "model.il"
     yosys = find_yosys()
     assert yosys is not None
+    # -- The same two Yosys runs, with globalize_ffs() between them, that
+    # -- the pico scons plugin uses.
     subprocess.run(
         [
             yosys,
             "-p",
-            f"read_verilog -sv {v_path}; prep -top main -flatten; "
-            f"write_cxxrtl -O6 -g0 {model_path}",
+            YOSYS_TO_RTLIL.format(
+                sources=v_path, top="main", rtlil=rtlil_path
+            ),
+        ],
+        check=True,
+        capture_output=True,
+    )
+    rtlil_path.write_text(
+        globalize_ffs(rtlil_path.read_text(encoding="utf-8")),
+        encoding="utf-8",
+    )
+    subprocess.run(
+        [
+            yosys,
+            "-p",
+            YOSYS_TO_CXXRTL.format(rtlil=rtlil_path, target=model_path),
         ],
         check=True,
         capture_output=True,
